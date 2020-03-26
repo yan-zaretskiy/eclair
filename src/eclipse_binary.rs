@@ -15,7 +15,7 @@ use crate::errors::EclError;
 
 pub type FixedString = ArrayString<[u8; 8]>;
 
-// Represents a body of data in a binary record in an Eclipse file.
+/// Represents a body of data in a binary record in an Eclipse file.
 #[derive(Debug, PartialEq)]
 pub enum EclData {
     Int(Vec<i32>),
@@ -112,7 +112,7 @@ mod parsing {
         Ok((BigEndian::read_i32(left), right))
     }
 
-    pub(crate) fn single_record(input: &[u8]) -> ah::Result<(&[u8], &[u8])> {
+    pub(super) fn single_record(input: &[u8]) -> ah::Result<(&[u8], &[u8])> {
         // head marker
         let (head, input) = take_i32(input).with_context(|| "Failed to read a head marker.")?;
 
@@ -142,7 +142,7 @@ mod parsing {
         Ok((data, input))
     }
 
-    pub(crate) fn keyword_header(input: &[u8]) -> ah::Result<(FixedString, usize, EclData)> {
+    pub(super) fn keyword_header(input: &[u8]) -> ah::Result<(FixedString, usize, EclData)> {
         // header record, must be 16 bytes long in total
         let (header, _) =
             single_record_with_size(16, input).with_context(|| "Failed to read a data header.")?;
@@ -168,7 +168,7 @@ mod parsing {
         Ok((name, n_elements as usize, data))
     }
 
-    pub(crate) fn keyword_data(
+    pub(super) fn keyword_data(
         n_elements: usize,
         mut data: EclData,
         input: &[u8],

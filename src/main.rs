@@ -14,8 +14,8 @@ use crate::errors::EclError;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
-    name = "ecl2hdf",
-    about = "A converter of Eclipse summary files to HDF5."
+    name = "eclair",
+    about = "A converter of Eclipse summary files to MessagePack."
 )]
 struct Opt {
     /// Input file
