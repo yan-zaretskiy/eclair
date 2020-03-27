@@ -1,4 +1,4 @@
-`eclair` aspires to be a set of tool to manipulate the outputs of the Eclipse reservoir simulator.
+`eclair` aspires to be a set of tools to manipulate the outputs of the Eclipse reservoir simulator.
 
 At this point all it can do is convert `UNSMRY` files into a MessagePack format.
 

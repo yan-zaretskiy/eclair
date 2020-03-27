@@ -21,6 +21,10 @@ struct Opt {
     /// Input file
     #[structopt(parse(from_os_str))]
     input: PathBuf,
+
+    /// Optional output file
+    #[structopt(parse(from_os_str), short, long)]
+    output: Option<PathBuf>,
 }
 
 fn main() -> ah::Result<()> {
@@ -49,8 +53,12 @@ fn main() -> ah::Result<()> {
     // serialize summary data in the MessagePack format
     let res = rmps::to_vec(&summary)?;
 
-    let mut file = File::create(input_path.with_extension("mpk"))?;
-    file.write_all(&res)?;
+    let mut out_file = match opt.output {
+        Some(p) => File::create(p)?,
+        None => File::create(input_path.with_extension("mpk"))?,
+    };
+
+    out_file.write_all(&res)?;
 
     Ok(())
 }

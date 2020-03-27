@@ -24,11 +24,22 @@ enum VectorId {
     Timing,
     Performance,
     Field,
-    Well{well_name: FixedString},
-    WellCompletion{well_name: FixedString, completion_id: i32},
-    Group{group_name: FixedString},
-    Cell{cell_id: i32},
-    Region{region_id: i32},
+    Well {
+        well_name: FixedString,
+    },
+    WellCompletion {
+        well_name: FixedString,
+        completion_id: i32,
+    },
+    Group {
+        group_name: FixedString,
+    },
+    Cell {
+        cell_id: i32,
+    },
+    Region {
+        region_id: i32,
+    },
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -124,11 +135,14 @@ impl EclSummary {
             } else {
                 match &kw[0..1] {
                     "F" => VectorId::Field,
-                    "W" => VectorId::Well{well_name: wgname},
-                    "C" => VectorId::WellCompletion{well_name: wgname, completion_id: num},
-                    "G" => VectorId::Group{group_name: wgname},
-                    "B" => VectorId::Cell{cell_id: num},
-                    "R" => VectorId::Region{region_id: num},
+                    "W" => VectorId::Well { well_name: wgname },
+                    "C" => VectorId::WellCompletion {
+                        well_name: wgname,
+                        completion_id: num,
+                    },
+                    "G" => VectorId::Group { group_name: wgname },
+                    "B" => VectorId::Cell { cell_id: num },
+                    "R" => VectorId::Region { region_id: num },
                     _ => VectorId::Unknown,
                 }
             };
