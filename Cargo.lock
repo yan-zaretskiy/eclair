@@ -75,7 +75,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ecl2hdf"
+name = "eclair"
 version = "0.1.0"
 dependencies = [
  "anyhow",

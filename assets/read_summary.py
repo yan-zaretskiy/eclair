@@ -1,15 +1,20 @@
+"""
+An example script for reading the MessagePack-formatted Eclipse summary data.
+"""
+
 import matplotlib.pyplot as plt
 import msgpack
 
 
 def organize_summary(vectors):
-    result = {}
+    result = {'Timing': {}, 'Wells': {}, 'Groups': {}}
+
     for (name, unit, vid, data) in vectors:
         if vid[0] == 'Timing':
-            result.setdefault('Timing', {})[name] = (unit, data)
+            result['Timing'][name] = (unit, data)
         elif vid[0] == 'Well':
             well_name = vid[1]
-            result.setdefault('Wells', {}).setdefault(well_name, {})[name] = (unit, data)
+            result['Wells'].setdefault(well_name, {})[name] = (unit, data)
 
     return result
 
@@ -21,6 +26,7 @@ with open("SPE10.mpk", "rb") as fp:
 # unpack raw bytes
 summary = msgpack.unpackb(raw_bytes, strict_map_key=False)
 
+# reshuffle data
 start_date = summary[0]
 results = organize_summary(summary[1])
 
