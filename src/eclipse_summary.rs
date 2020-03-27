@@ -18,24 +18,32 @@ static PERFORMANCE_KEYWORDS: phf::Set<&'static str> = phf_set! {
 };
 
 #[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type")]
 enum VectorId {
     Unknown,
     Timing,
     Performance,
     Field,
-    Well(FixedString),
-    WellCompletion(FixedString, i32),
-    Group(FixedString),
-    Cell(i32),
-    Region(i32),
+    Well{well_name: FixedString},
+    WellCompletion{well_name: FixedString, completion_id: i32},
+    Group{group_name: FixedString},
+    Cell{cell_id: i32},
+    Region{region_id: i32},
 }
 
 #[derive(Clone, Debug, Serialize)]
 struct EclSummaryVector {
-    values: Vec<f32>,
+    /// Keyword name
     keyword: FixedString,
+
+    /// Physical units for the values
     unit: FixedString,
+
+    /// Vector identifier (well, field, group, etc)
     id: VectorId,
+
+    /// Actual data
+    values: Vec<f32>,
 }
 
 impl Default for EclSummaryVector {
@@ -51,7 +59,10 @@ impl Default for EclSummaryVector {
 
 #[derive(Debug, Serialize)]
 pub struct EclSummary {
+    /// Simulation start date
     pub start_date: (i32, i32, i32),
+
+    /// Collection of summary vectors
     data: Vec<EclSummaryVector>,
 }
 
@@ -113,11 +124,11 @@ impl EclSummary {
             } else {
                 match &kw[0..1] {
                     "F" => VectorId::Field,
-                    "W" => VectorId::Well(wgname),
-                    "C" => VectorId::WellCompletion(wgname, num),
-                    "G" => VectorId::Group(wgname),
-                    "B" => VectorId::Cell(num),
-                    "R" => VectorId::Region(num),
+                    "W" => VectorId::Well{well_name: wgname},
+                    "C" => VectorId::WellCompletion{well_name: wgname, completion_id: num},
+                    "G" => VectorId::Group{group_name: wgname},
+                    "B" => VectorId::Cell{cell_id: num},
+                    "R" => VectorId::Region{region_id: num},
                     _ => VectorId::Unknown,
                 }
             };

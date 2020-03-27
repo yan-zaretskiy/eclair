@@ -48,6 +48,7 @@ fn main() -> ah::Result<()> {
 
     // serialize summary data in the MessagePack format
     let res = rmps::to_vec(&summary)?;
+
     let mut file = File::create(input_path.with_extension("mpk"))?;
     file.write_all(&res)?;
 
