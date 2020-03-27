@@ -1,4 +1,5 @@
 use crate::eclipse_binary::{EclBinaryFile, EclData, FixedString};
+use serde::Serialize;
 
 use itertools::izip;
 use phf::phf_set;
@@ -16,7 +17,7 @@ static PERFORMANCE_KEYWORDS: phf::Set<&'static str> = phf_set! {
     "TIMESTEP",
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 enum VectorId {
     Unknown,
     Timing,
@@ -29,7 +30,7 @@ enum VectorId {
     Region(i32),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 struct EclSummaryVector {
     values: Vec<f32>,
     keyword: FixedString,
@@ -48,7 +49,7 @@ impl Default for EclSummaryVector {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct EclSummary {
     pub start_date: (i32, i32, i32),
     data: Vec<EclSummaryVector>,
