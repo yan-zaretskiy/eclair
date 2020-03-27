@@ -25,5 +25,12 @@ start_date = summary[0]
 results = organize_summary(summary[1])
 
 # Sample plot
-plt.plot(results['Timing']['TIME'][1], results['Wells']['P2']['WOPR'][1])
+x = results['Timing']['TIME']
+y = results['Wells']['P2']['WOPR']
+plt.plot(x[1], y[1])
+plt.title('WOPR for P2')
+plt.xlabel(f'TIME [{x[0]}]')
+plt.ylabel(f'WOPR [{y[0]}]')
+plt.grid(True)
+
 plt.show()
