@@ -11,9 +11,14 @@ static TIMING_KEYWORDS: phf::Set<&'static str> = phf_set! {
 
 static PERFORMANCE_KEYWORDS: phf::Set<&'static str> = phf_set! {
     "ELAPSED",
+    "MLINEARS",
+    "MSUMLINS",
+    "MSUMNEWT",
     "NEWTON",
     "NLINEARS",
     "TCPU",
+    "TCPUDAY",
+    "TCPUTS",
     "TIMESTEP",
 };
 
@@ -71,14 +76,14 @@ impl Default for EclSummaryVector {
 #[derive(Debug, Serialize)]
 pub struct EclSummary {
     /// Simulation start date
-    pub start_date: (i32, i32, i32),
+    start_date: (i32, i32, i32),
 
     /// Collection of summary vectors
     data: Vec<EclSummaryVector>,
 }
 
 impl EclSummary {
-    pub fn new(smspec: EclBinaryFile, unsmry: EclBinaryFile) -> Self {
+    pub fn new(smspec: EclBinaryFile, unsmry: EclBinaryFile, debug: bool) -> Self {
         let mut start_date = (0, 0, 0);
         let mut data: Vec<EclSummaryVector> = vec![];
         let mut wgnames: Vec<FixedString> = vec![];
@@ -133,17 +138,25 @@ impl EclSummary {
             } else if PERFORMANCE_KEYWORDS.contains(kw) {
                 VectorId::Performance
             } else {
+                let is_wg_name_valid =
+                    wgname.len() > 0 && wgname != FixedString::from(":+:+:+:+").unwrap();
+
                 match &kw[0..1] {
                     "F" => VectorId::Field,
-                    "W" => VectorId::Well { well_name: wgname },
-                    "C" => VectorId::WellCompletion {
+                    "R" if num > 0 => VectorId::Region { region_id: num },
+                    "W" if is_wg_name_valid => VectorId::Well { well_name: wgname },
+                    "C" if is_wg_name_valid && num > 0 => VectorId::WellCompletion {
                         well_name: wgname,
                         completion_id: num,
                     },
-                    "G" => VectorId::Group { group_name: wgname },
-                    "B" => VectorId::Cell { cell_id: num },
-                    "R" => VectorId::Region { region_id: num },
-                    _ => VectorId::Unknown,
+                    "G" if is_wg_name_valid => VectorId::Group { group_name: wgname },
+                    "B" if num > 0 => VectorId::Cell { cell_id: num },
+                    _ => {
+                        if debug {
+                            println!("Unknown vector. KEYWORD: {}, WGNAME: {}, NUM: {}", kw, wgname, num);
+                        }
+                        VectorId::Unknown
+                    },
                 }
             };
         }
@@ -153,7 +166,10 @@ impl EclSummary {
             if let "PARAMS" = kw.name.as_str() {
                 if let EclData::Float(v) = kw.data {
                     for (d, param) in data.iter_mut().zip(v) {
-                        d.values.push(param);
+                        match d.id {
+                            VectorId::Unknown => continue,
+                            _ => d.values.push(param)
+                        }
                     }
                 }
             }

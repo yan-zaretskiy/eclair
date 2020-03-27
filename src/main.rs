@@ -25,6 +25,10 @@ struct Opt {
     /// Optional output file
     #[structopt(parse(from_os_str), short, long)]
     output: Option<PathBuf>,
+
+    /// Debug
+    #[structopt(short, long)]
+    debug: bool,
 }
 
 fn main() -> ah::Result<()> {
@@ -48,7 +52,7 @@ fn main() -> ah::Result<()> {
     let smspec = EclBinaryFile::new(input_path.with_extension("SMSPEC"))?;
     let unsmry = EclBinaryFile::new(input_path.with_extension("UNSMRY"))?;
 
-    let summary = EclSummary::new(smspec, unsmry);
+    let summary = EclSummary::new(smspec, unsmry, opt.debug);
 
     // serialize summary data in the MessagePack format
     let res = rmps::to_vec(&summary)?;
