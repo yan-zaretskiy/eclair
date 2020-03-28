@@ -22,11 +22,11 @@ struct Opt {
     #[structopt(parse(from_os_str))]
     input: PathBuf,
 
-    /// Optional output file
+    /// Output file
     #[structopt(parse(from_os_str), short, long)]
     output: Option<PathBuf>,
 
-    /// Debug
+    /// Prints debug info
     #[structopt(short, long)]
     debug: bool,
 }

@@ -1,26 +1,34 @@
 use crate::eclipse_binary::{EclBinaryFile, EclData, FixedString};
 
 use itertools::izip;
-use phf::phf_set;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 
-static TIMING_KEYWORDS: phf::Set<&'static str> = phf_set! {
-    "TIME",
-    "YEARS",
-};
+use std::collections::HashSet;
 
-static PERFORMANCE_KEYWORDS: phf::Set<&'static str> = phf_set! {
-    "ELAPSED",
-    "MLINEARS",
-    "MSUMLINS",
-    "MSUMNEWT",
-    "NEWTON",
-    "NLINEARS",
-    "TCPU",
-    "TCPUDAY",
-    "TCPUTS",
-    "TIMESTEP",
-};
+static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+    let mut s = HashSet::new();
+    s.insert("TIME");
+    s.insert("YEARS");
+    s
+});
+
+static PERFORMANCE_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+    let mut s = HashSet::new();
+    s.insert("ELAPSED");
+    s.insert("MLINEARS");
+    s.insert("MSUMLINS");
+    s.insert("MSUMNEWT");
+    s.insert("NEWTON");
+    s.insert("NLINEARS");
+    s.insert("TCPU");
+    s.insert("TCPUDAY");
+    s.insert("TCPUTS");
+    s.insert("TIMESTEP");
+    s
+});
+
+static WEIRD_STRING: Lazy<FixedString> = Lazy::new(|| FixedString::from(":+:+:+:+").unwrap());
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "type")]
@@ -124,8 +132,7 @@ impl EclSummary {
             } else if PERFORMANCE_KEYWORDS.contains(kw) {
                 VectorId::Performance
             } else {
-                let is_wg_name_valid =
-                    wgname.len() > 0 && wgname != FixedString::from(":+:+:+:+").unwrap();
+                let is_wg_name_valid = wgname.len() > 0 && wgname != *WEIRD_STRING;
 
                 match &kw[0..1] {
                     "F" => VectorId::Field,
