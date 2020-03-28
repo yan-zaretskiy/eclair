@@ -1,8 +1,8 @@
 use crate::eclipse_binary::{EclBinaryFile, EclData, FixedString};
-use serde::Serialize;
 
 use itertools::izip;
 use phf::phf_set;
+use serde::Serialize;
 
 static TIMING_KEYWORDS: phf::Set<&'static str> = phf_set! {
     "TIME",
@@ -22,7 +22,7 @@ static PERFORMANCE_KEYWORDS: phf::Set<&'static str> = phf_set! {
     "TIMESTEP",
 };
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "type")]
 enum VectorId {
     Unknown,
@@ -65,10 +65,10 @@ struct EclSummaryVector {
 impl Default for EclSummaryVector {
     fn default() -> EclSummaryVector {
         EclSummaryVector {
-            id: VectorId::Unknown,
-            values: Vec::default(),
             keyword: FixedString::default(),
             unit: FixedString::default(),
+            id: VectorId::Unknown,
+            values: Vec::default(),
         }
     }
 }
@@ -91,40 +91,26 @@ impl EclSummary {
 
         // 1. Parse the SMSPEC file for enough metadata to identify individual data vectors
         for kw in smspec {
-            match kw.name.as_str() {
-                "DIMENS" => {
-                    if let EclData::Int(v) = kw.data {
-                        data.resize(v[0] as usize, Default::default());
+            match (kw.name.as_str(), kw.data) {
+                ("DIMENS", EclData::Int(v)) => {
+                    data.resize(v[0] as usize, Default::default());
+                }
+                ("STARTDAT", EclData::Int(v)) => start_date = (v[0], v[1], v[2]),
+                ("KEYWORDS", EclData::FixStr(v)) => {
+                    for (summary_vector, keyword) in data.iter_mut().zip(v) {
+                        summary_vector.keyword = keyword;
                     }
                 }
-                "STARTDAT" => {
-                    if let EclData::Int(v) = kw.data {
-                        start_date = (v[0], v[1], v[2])
+                ("UNITS", EclData::FixStr(v)) => {
+                    for (summary_vector, unit) in data.iter_mut().zip(v) {
+                        summary_vector.unit = unit;
                     }
                 }
-                "KEYWORDS" => {
-                    if let EclData::FixStr(v) = kw.data {
-                        for (summary_vector, keyword) in data.iter_mut().zip(v) {
-                            summary_vector.keyword = keyword;
-                        }
-                    }
+                ("WGNAMES", EclData::FixStr(v)) => {
+                    wgnames = v.into_iter().collect();
                 }
-                "UNITS" => {
-                    if let EclData::FixStr(v) = kw.data {
-                        for (summary_vector, unit) in data.iter_mut().zip(v) {
-                            summary_vector.unit = unit;
-                        }
-                    }
-                }
-                "WGNAMES" => {
-                    if let EclData::FixStr(v) = kw.data {
-                        wgnames = v.into_iter().collect();
-                    }
-                }
-                "NUMS" => {
-                    if let EclData::Int(v) = kw.data {
-                        nums = v.into_iter().collect();
-                    }
+                ("NUMS", EclData::Int(v)) => {
+                    nums = v.into_iter().collect();
                 }
                 _ => continue,
             }
@@ -153,27 +139,35 @@ impl EclSummary {
                     "B" if num > 0 => VectorId::Cell { cell_id: num },
                     _ => {
                         if debug {
-                            println!("Unknown vector. KEYWORD: {}, WGNAME: {}, NUM: {}", kw, wgname, num);
+                            println!(
+                                "Unknown vector. KEYWORD: {}, WGNAME: {}, NUM: {}",
+                                kw, wgname, num
+                            );
                         }
                         VectorId::Unknown
-                    },
+                    }
                 }
             };
         }
 
         // 3. Populate vectors with data from the UNSMRY file
         for kw in unsmry {
-            if let "PARAMS" = kw.name.as_str() {
-                if let EclData::Float(v) = kw.data {
-                    for (d, param) in data.iter_mut().zip(v) {
-                        match d.id {
-                            VectorId::Unknown => continue,
-                            _ => d.values.push(param)
+            match (kw.name.as_str(), kw.data) {
+                ("PARAMS", EclData::Float(params)) => {
+                    for (d, param) in data.iter_mut().zip(params) {
+                        if d.id != VectorId::Unknown {
+                            d.values.push(param)
                         }
                     }
                 }
+                _ => continue,
             }
         }
+
+        let data = data
+            .into_iter()
+            .filter(|e| e.id != VectorId::Unknown)
+            .collect();
 
         Self { start_date, data }
     }

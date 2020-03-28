@@ -1,3 +1,10 @@
+use crate::errors::EclError;
+
+use anyhow as ah;
+use anyhow::Context;
+use arrayvec::ArrayString;
+use byteorder::{BigEndian, ByteOrder};
+
 use std::{
     cmp::min,
     fs::File,
@@ -5,13 +12,6 @@ use std::{
     path::Path,
     str,
 };
-
-use anyhow as ah;
-use anyhow::Context;
-use arrayvec::ArrayString;
-use byteorder::{BigEndian, ByteOrder};
-
-use crate::errors::EclError;
 
 pub type FixedString = ArrayString<[u8; 8]>;
 

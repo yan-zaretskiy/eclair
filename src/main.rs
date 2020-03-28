@@ -2,15 +2,15 @@ mod eclipse_binary;
 mod eclipse_summary;
 mod errors;
 
-use std::{fs::File, io::prelude::*, path::PathBuf};
+use crate::eclipse_binary::EclBinaryFile;
+use crate::eclipse_summary::EclSummary;
+use crate::errors::EclError;
 
 use anyhow as ah;
 use rmp_serde as rmps;
 use structopt::StructOpt;
 
-use crate::eclipse_binary::EclBinaryFile;
-use crate::eclipse_summary::EclSummary;
-use crate::errors::EclError;
+use std::{fs::File, io::prelude::*, path::PathBuf};
 
 #[derive(Debug, StructOpt)]
 #[structopt(
