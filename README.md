@@ -4,7 +4,7 @@ At this point all it can do is convert `UNSMRY` files into a MessagePack format.
 
 ## Building
 
-- Install Rust and Cargo (version 1.40.0 or above). Refer to https://rustup.rs/ for rust installation;
+- Install Rust and Cargo. Refer to https://rustup.rs/ for rust installation;
 - Inside the repo run `cargo build` or `cargo build --release`;
 
 ## Running
@@ -13,3 +13,5 @@ At this point all it can do is convert `UNSMRY` files into a MessagePack format.
     ```
     cargo run assets/SPE10
     ```
+## Inspecting results
+- Look inside the `plotting` folder for a sample Jupyter notebook that shows how to load data in Python and plot what you want. The `docs` folder contains a brief description of the MessagePack layout. The data is loaded in Python as a tree of nested dictionaries, so it's rather easy to inspect its contents.
