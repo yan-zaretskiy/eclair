@@ -6,3 +6,6 @@
 
 # CLion
 **/.idea
+
+# Jupyter notebooks
+plotting/.ipynb_checkpoints

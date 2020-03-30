@@ -10,6 +10,9 @@ static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     let mut s = HashSet::new();
     s.insert("TIME");
     s.insert("YEARS");
+    s.insert("DAY");
+    s.insert("MONTH");
+    s.insert("YEAR");
     s
 });
 
@@ -25,6 +28,8 @@ static PERFORMANCE_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     s.insert("TCPUDAY");
     s.insert("TCPUTS");
     s.insert("TIMESTEP");
+    s.insert("MEMGB");
+    s.insert("MAXMEMGB");
     s
 });
 
@@ -58,6 +63,10 @@ pub struct EclSummary {
     /// Region data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     regions: HashMap<i32, HashMap<FixedString, EclSummaryRecord>>,
+
+    /// Aquifer data
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    aquifers: HashMap<i32, HashMap<FixedString, EclSummaryRecord>>,
 
     /// Well data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
@@ -145,6 +154,9 @@ impl EclSummary {
                     }
                     "R" if is_num_valid => {
                         summary.regions.entry(num).or_default().extend(hm);
+                    }
+                    "A" if is_num_valid => {
+                        summary.aquifers.entry(num).or_default().extend(hm);
                     }
                     "W" if is_wg_valid => {
                         summary.wells.entry(wg).or_default().extend(hm);
