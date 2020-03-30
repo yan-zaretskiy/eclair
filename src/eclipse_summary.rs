@@ -144,39 +144,19 @@ impl EclSummary {
                         summary.field.extend(hm);
                     }
                     "R" if is_num_valid => {
-                        summary
-                            .regions
-                            .entry(num)
-                            .or_insert_with(HashMap::new)
-                            .extend(hm);
+                        summary.regions.entry(num).or_default().extend(hm);
                     }
                     "W" if is_wg_valid => {
-                        summary
-                            .wells
-                            .entry(wg)
-                            .or_insert_with(HashMap::new)
-                            .extend(hm);
+                        summary.wells.entry(wg).or_default().extend(hm);
                     }
                     "C" if is_wg_valid && is_num_valid => {
-                        summary
-                            .completions
-                            .entry((wg, num))
-                            .or_insert_with(HashMap::new)
-                            .extend(hm);
+                        summary.completions.entry((wg, num)).or_default().extend(hm);
                     }
                     "G" if is_wg_valid => {
-                        summary
-                            .groups
-                            .entry(wg)
-                            .or_insert_with(HashMap::new)
-                            .extend(hm);
+                        summary.groups.entry(wg).or_default().extend(hm);
                     }
                     "B" if is_num_valid => {
-                        summary
-                            .cells
-                            .entry(num)
-                            .or_insert_with(HashMap::new)
-                            .extend(hm);
+                        summary.cells.entry(num).or_default().extend(hm);
                     }
                     _ => {
                         if debug {
