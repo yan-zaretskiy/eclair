@@ -2,7 +2,7 @@ mod eclipse_binary;
 mod eclipse_summary;
 mod errors;
 
-use crate::eclipse_binary::EclBinaryFile;
+use crate::eclipse_binary::EclBinFile;
 use crate::eclipse_summary::EclSummary;
 use crate::errors::EclError;
 
@@ -49,13 +49,13 @@ fn main() -> ah::Result<()> {
         }
     }
 
-    let smspec = EclBinaryFile::new(input_path.with_extension("SMSPEC"))?;
-    let unsmry = EclBinaryFile::new(input_path.with_extension("UNSMRY"))?;
+    let smspec = EclBinFile::new(input_path.with_extension("SMSPEC"))?;
+    let unsmry = EclBinFile::new(input_path.with_extension("UNSMRY"))?;
 
     let summary = EclSummary::new(smspec, unsmry, opt.debug);
 
     // serialize summary data in the MessagePack format
-    let res = rmps::to_vec(&summary)?;
+    let res = rmps::to_vec_named(&summary)?;
 
     let mut out_file = match opt.output {
         Some(p) => File::create(p)?,

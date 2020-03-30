@@ -15,9 +15,9 @@ use std::{
 
 pub type FixedString = ArrayString<[u8; 8]>;
 
-/// Represents a body of data in a binary record in an Eclipse file.
+/// Represents a body of data in a binary record in an Eclipse file
 #[derive(Debug, PartialEq)]
-pub enum EclData {
+pub enum EclBinData {
     Int(Vec<i32>),
     Float(Vec<f32>),
     Double(Vec<f64>),
@@ -27,12 +27,12 @@ pub enum EclData {
     Message,
 }
 
-impl EclData {
+impl EclBinData {
     const NUM_BLOCK_SIZE: usize = 1000;
     const STR_BLOCK_SIZE: usize = 105;
 
     fn new(raw_dtype: &[u8]) -> ah::Result<Self> {
-        use EclData::*;
+        use EclBinData::*;
         match str::from_utf8(raw_dtype) {
             Ok("INTE") => Ok(Int(vec![])),
             Ok("REAL") => Ok(Float(vec![])),
@@ -49,15 +49,15 @@ impl EclData {
     }
 
     fn block_length(&self) -> usize {
-        use EclData::*;
+        use EclBinData::*;
         match self {
-            FixStr(_) | DynStr(_, _) => EclData::STR_BLOCK_SIZE,
-            _ => EclData::NUM_BLOCK_SIZE,
+            FixStr(_) | DynStr(_, _) => EclBinData::STR_BLOCK_SIZE,
+            _ => EclBinData::NUM_BLOCK_SIZE,
         }
     }
 
     fn element_size(&self) -> usize {
-        use EclData::*;
+        use EclBinData::*;
         match self {
             Int(_) | Float(_) | Logical(_) => 4,
             Double(_) | FixStr(_) => 8,
@@ -72,7 +72,7 @@ impl EclData {
     }
 
     fn push(&mut self, raw_chunk: &[u8]) {
-        use EclData::*;
+        use EclBinData::*;
         match self {
             Int(v) | Logical(v) => v.push(BigEndian::read_i32(raw_chunk)),
             Float(v) => v.push(BigEndian::read_f32(raw_chunk)),
@@ -92,7 +92,7 @@ impl EclData {
     }
 }
 
-/// Helper function for parsing binary files.
+/// Helper functions for parsing binary files
 mod parsing {
     use super::*;
 
@@ -142,7 +142,7 @@ mod parsing {
         Ok((data, input))
     }
 
-    pub(super) fn keyword_header(input: &[u8]) -> ah::Result<(FixedString, usize, EclData)> {
+    pub(super) fn keyword_header(input: &[u8]) -> ah::Result<(FixedString, usize, EclBinData)> {
         // header record, must be 16 bytes long in total
         let (header, _) =
             single_record_with_size(16, input).with_context(|| "Failed to read a data header.")?;
@@ -164,15 +164,15 @@ mod parsing {
         let (dtype, _) = take(4, header).with_context(|| "Failed to read a data type string.")?;
 
         // Init the data storage with the correct type
-        let data = EclData::new(dtype).with_context(|| "Failed to parse a data type.")?;
+        let data = EclBinData::new(dtype).with_context(|| "Failed to parse a data type.")?;
         Ok((name, n_elements as usize, data))
     }
 
     pub(super) fn keyword_data(
         n_elements: usize,
-        mut data: EclData,
+        mut data: EclBinData,
         input: &[u8],
-    ) -> ah::Result<EclData> {
+    ) -> ah::Result<EclBinData> {
         // populate the actual array body from sub-blocks
         let mut n_remaining_elements = n_elements;
         let mut remaining_input = input;
@@ -197,18 +197,18 @@ mod parsing {
 
 /// A single binary keyword.
 #[derive(Debug, PartialEq)]
-pub struct EclKeyword {
+pub struct EclBinKeyword {
     pub name: FixedString,
-    pub data: EclData,
+    pub data: EclBinData,
 }
 
 /// A binary file is an iterator over keywords read from a file one at a time.
 #[derive(Debug)]
-pub struct EclBinaryFile {
+pub struct EclBinFile {
     reader: BufReader<File>,
 }
 
-impl EclBinaryFile {
+impl EclBinFile {
     pub fn new<P: AsRef<Path>>(path: P) -> ah::Result<Self> {
         let file = File::open(path).with_context(|| "Failed to open file at requested path")?;
         Ok(Self {
@@ -216,7 +216,7 @@ impl EclBinaryFile {
         })
     }
 
-    fn next_keyword(&mut self) -> ah::Result<EclKeyword> {
+    fn next_keyword(&mut self) -> ah::Result<EclBinKeyword> {
         // Look at the next 24 bytes and try reading the header;
         let mut header_buf = [0u8; 24];
         self.reader.read_exact(&mut header_buf)?;
@@ -230,12 +230,12 @@ impl EclBinaryFile {
 
         let data = parsing::keyword_data(n_elements, data, &data_buf)?;
 
-        Ok(EclKeyword { name, data })
+        Ok(EclBinKeyword { name, data })
     }
 }
 
-impl Iterator for EclBinaryFile {
-    type Item = EclKeyword;
+impl Iterator for EclBinFile {
+    type Item = EclBinKeyword;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.next_keyword() {
@@ -273,13 +273,13 @@ mod tests {
         let input = include_bytes!("../assets/single_data_array.bin");
         let (name, n_elements, data) = parsing::keyword_header(&input[..24]).unwrap();
         let data = parsing::keyword_data(n_elements, data, &input[24..]).unwrap();
-        let kw = EclKeyword { name, data };
+        let kw = EclBinKeyword { name, data };
 
         assert_eq!(kw.name, FixedString::from("KEYWORDS").unwrap());
 
         assert_eq!(
             kw.data,
-            EclData::FixStr(
+            EclBinData::FixStr(
                 vec!["FOPR", "FGPR", "FWPR", "WOPR", "WGPR"]
                     .iter()
                     .map(|&s| FixedString::from(s).unwrap())

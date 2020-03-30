@@ -24,7 +24,7 @@ with open("SPE10.mpk", "rb") as fp:
     raw_bytes = fp.read()
 
 # unpack raw bytes
-summary = msgpack.unpackb(raw_bytes, strict_map_key=False)
+summary = msgpack.unpackb(raw_bytes)
 
 # reshuffle data
 start_date = summary[0]
