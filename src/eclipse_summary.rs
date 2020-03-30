@@ -1,10 +1,10 @@
-use crate::eclipse_binary::{EclBinaryFile, EclData, FixedString};
+use std::collections::{HashMap, HashSet};
 
 use itertools::izip;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 
-use std::collections::HashSet;
+use crate::eclipse_binary::{EclBinData, EclBinFile, FixedString};
 
 static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     let mut s = HashSet::new();
@@ -30,152 +30,166 @@ static PERFORMANCE_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
 
 static WEIRD_STRING: Lazy<FixedString> = Lazy::new(|| FixedString::from(":+:+:+:+").unwrap());
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(tag = "type")]
-enum VectorId {
-    Unknown,
-    Timing,
-    Performance,
-    Field,
-    Well {
-        well_name: FixedString,
-    },
-    WellCompletion {
-        well_name: FixedString,
-        completion_id: i32,
-    },
-    Group {
-        group_name: FixedString,
-    },
-    Cell {
-        cell_id: i32,
-    },
-    Region {
-        region_id: i32,
-    },
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct EclSummaryVector {
-    /// Keyword name
-    keyword: FixedString,
-
+#[derive(Clone, Debug, Default, Serialize)]
+struct EclSummaryRecord {
     /// Physical units for the values
     unit: FixedString,
-
-    /// Vector identifier (well, field, group, etc)
-    id: VectorId,
 
     /// Actual data
     values: Vec<f32>,
 }
 
-impl Default for EclSummaryVector {
-    fn default() -> EclSummaryVector {
-        EclSummaryVector {
-            keyword: FixedString::default(),
-            unit: FixedString::default(),
-            id: VectorId::Unknown,
-            values: Vec::default(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct EclSummary {
     /// Simulation start date
     start_date: (i32, i32, i32),
 
-    /// Collection of summary vectors
-    data: Vec<EclSummaryVector>,
+    /// Time data, should always be present
+    time: HashMap<FixedString, EclSummaryRecord>,
+
+    /// Performance data
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    perf: HashMap<FixedString, EclSummaryRecord>,
+
+    /// Field data
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    field: HashMap<FixedString, EclSummaryRecord>,
+
+    /// Region data
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    regions: HashMap<i32, HashMap<FixedString, EclSummaryRecord>>,
+
+    /// Well data
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    wells: HashMap<FixedString, HashMap<FixedString, EclSummaryRecord>>,
+
+    /// Well completion data
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    completions: HashMap<(FixedString, i32), HashMap<FixedString, EclSummaryRecord>>,
+
+    /// Group data
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    groups: HashMap<FixedString, HashMap<FixedString, EclSummaryRecord>>,
+
+    /// Cell data
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    cells: HashMap<i32, HashMap<FixedString, EclSummaryRecord>>,
 }
 
 impl EclSummary {
-    pub fn new(smspec: EclBinaryFile, unsmry: EclBinaryFile, debug: bool) -> Self {
+    pub fn new(smspec: EclBinFile, unsmry: EclBinFile, debug: bool) -> Self {
+        // 1. Parse the SMSPEC file for enough metadata to correctly place data records
         let mut start_date = (0, 0, 0);
-        let mut data: Vec<EclSummaryVector> = vec![];
-        let mut wgnames: Vec<FixedString> = vec![];
-        let mut nums: Vec<i32> = vec![];
+        let mut names = Vec::new();
+        let mut wgnames = Vec::new();
+        let mut nums = Vec::new();
+        let mut units = Vec::new();
+        let mut all_values: Vec<Vec<f32>> = Vec::new();
 
-        // 1. Parse the SMSPEC file for enough metadata to identify individual data vectors
         for kw in smspec {
             match (kw.name.as_str(), kw.data) {
-                ("DIMENS", EclData::Int(v)) => {
-                    data.resize(v[0] as usize, Default::default());
+                ("DIMENS", EclBinData::Int(dims)) => {
+                    all_values.resize(dims[0] as usize, Default::default());
                 }
-                ("STARTDAT", EclData::Int(v)) => start_date = (v[0], v[1], v[2]),
-                ("KEYWORDS", EclData::FixStr(v)) => {
-                    for (summary_vector, keyword) in data.iter_mut().zip(v) {
-                        summary_vector.keyword = keyword;
-                    }
+                ("STARTDAT", EclBinData::Int(data)) => start_date = (data[0], data[1], data[2]),
+                ("KEYWORDS", EclBinData::FixStr(data)) => {
+                    names = data;
                 }
-                ("UNITS", EclData::FixStr(v)) => {
-                    for (summary_vector, unit) in data.iter_mut().zip(v) {
-                        summary_vector.unit = unit;
-                    }
+                ("UNITS", EclBinData::FixStr(data)) => {
+                    units = data;
                 }
-                ("WGNAMES", EclData::FixStr(v)) => {
-                    wgnames = v.into_iter().collect();
+                ("WGNAMES", EclBinData::FixStr(data)) => {
+                    wgnames = data;
                 }
-                ("NUMS", EclData::Int(v)) => {
-                    nums = v.into_iter().collect();
+                ("NUMS", EclBinData::Int(data)) => {
+                    nums = data;
                 }
                 _ => continue,
             }
         }
 
-        // 2. Build vector identifiers (global, well, region, cell, etc)
-        for (d, wgname, num) in izip!(&mut data, wgnames, nums) {
-            let kw = d.keyword.as_str();
-            d.id = if TIMING_KEYWORDS.contains(kw) {
-                VectorId::Timing
-            } else if PERFORMANCE_KEYWORDS.contains(kw) {
-                VectorId::Performance
-            } else {
-                let is_wg_name_valid = wgname.len() > 0 && wgname != *WEIRD_STRING;
+        // 2. Read data from the UNSMRY file
+        for unsmry_kw in unsmry {
+            match (unsmry_kw.name.as_str(), unsmry_kw.data) {
+                ("PARAMS", EclBinData::Float(params)) => {
+                    for (values, param) in izip!(&mut all_values, params) {
+                        values.push(param)
+                    }
+                }
+                _ => continue,
+            }
+        }
 
-                match &kw[0..1] {
-                    "F" => VectorId::Field,
-                    "R" if num > 0 => VectorId::Region { region_id: num },
-                    "W" if is_wg_name_valid => VectorId::Well { well_name: wgname },
-                    "C" if is_wg_name_valid && num > 0 => VectorId::WellCompletion {
-                        well_name: wgname,
-                        completion_id: num,
-                    },
-                    "G" if is_wg_name_valid => VectorId::Group { group_name: wgname },
-                    "B" if num > 0 => VectorId::Cell { cell_id: num },
+        // 3. Now we have all the data read, let't put it in where it belongs
+        let mut summary = EclSummary {
+            start_date,
+            ..Default::default()
+        };
+
+        for (name, wg, num, unit, values) in izip!(names, wgnames, nums, units, all_values) {
+            let mut hm = HashMap::new();
+            hm.insert(name, EclSummaryRecord { unit, values });
+
+            let name = name.as_str();
+            if TIMING_KEYWORDS.contains(name) {
+                summary.time.extend(hm);
+            } else if PERFORMANCE_KEYWORDS.contains(name) {
+                summary.perf.extend(hm);
+            } else {
+                let is_wg_valid = wg.len() > 0 && wg != *WEIRD_STRING;
+                let is_num_valid = num > 0;
+
+                match &name[0..1] {
+                    "F" => {
+                        summary.field.extend(hm);
+                    }
+                    "R" if is_num_valid => {
+                        summary
+                            .regions
+                            .entry(num)
+                            .or_insert_with(HashMap::new)
+                            .extend(hm);
+                    }
+                    "W" if is_wg_valid => {
+                        summary
+                            .wells
+                            .entry(wg)
+                            .or_insert_with(HashMap::new)
+                            .extend(hm);
+                    }
+                    "C" if is_wg_valid && is_num_valid => {
+                        summary
+                            .completions
+                            .entry((wg, num))
+                            .or_insert_with(HashMap::new)
+                            .extend(hm);
+                    }
+                    "G" if is_wg_valid => {
+                        summary
+                            .groups
+                            .entry(wg)
+                            .or_insert_with(HashMap::new)
+                            .extend(hm);
+                    }
+                    "B" if is_num_valid => {
+                        summary
+                            .cells
+                            .entry(num)
+                            .or_insert_with(HashMap::new)
+                            .extend(hm);
+                    }
                     _ => {
                         if debug {
                             println!(
                                 "Unknown vector. KEYWORD: {}, WGNAME: {}, NUM: {}",
-                                kw, wgname, num
+                                name, wg, num
                             );
                         }
-                        VectorId::Unknown
+                        continue;
                     }
                 }
-            };
-        }
-
-        // 3. Populate vectors with data from the UNSMRY file
-        for kw in unsmry {
-            match (kw.name.as_str(), kw.data) {
-                ("PARAMS", EclData::Float(params)) => {
-                    for (d, param) in data.iter_mut().zip(params) {
-                        if d.id != VectorId::Unknown {
-                            d.values.push(param)
-                        }
-                    }
-                }
-                _ => continue,
             }
         }
-
-        let data = data
-            .into_iter()
-            .filter(|e| e.id != VectorId::Unknown)
-            .collect();
-
-        Self { start_date, data }
+        summary
     }
 }
