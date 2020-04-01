@@ -1,8 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
+use anyhow as ah;
+use anyhow::Context;
 use itertools::izip;
 use once_cell::sync::Lazy;
 use serde::Serialize;
+use serde_bytes;
 
 use crate::eclipse_binary::{EclBinData, EclBinFile, FixedString};
 
@@ -35,13 +38,17 @@ static PERFORMANCE_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
 
 static WEIRD_STRING: Lazy<FixedString> = Lazy::new(|| FixedString::from(":+:+:+:+").unwrap());
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize)]
+#[serde(rename = "_ExtStruct")]
+struct ExtVec((i8, serde_bytes::ByteBuf));
+
+#[derive(Debug, Default, Serialize)]
 struct EclSummaryRecord {
     /// Physical units for the values
     unit: FixedString,
 
     /// Actual data
-    values: Vec<f32>,
+    values: ExtVec,
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -86,7 +93,7 @@ pub struct EclSummary {
 }
 
 impl EclSummary {
-    pub fn new(smspec: EclBinFile, unsmry: EclBinFile, debug: bool) -> Self {
+    pub fn new(smspec: EclBinFile, unsmry: EclBinFile, debug: bool) -> ah::Result<Self> {
         // 1. Parse the SMSPEC file for enough metadata to correctly place data records
         let mut start_date = (0, 0, 0);
         let mut names = Vec::new();
@@ -137,7 +144,16 @@ impl EclSummary {
 
         for (name, wg, num, unit, values) in izip!(names, wgnames, nums, units, all_values) {
             let mut hm = HashMap::new();
-            hm.insert(name, EclSummaryRecord { unit, values });
+            let slice =
+                transmute_slice(&values).with_context(|| "Failed to transmute &[f32] as &[u8]")?;
+
+            hm.insert(
+                name,
+                EclSummaryRecord {
+                    unit,
+                    values: ExtVec((2, serde_bytes::ByteBuf::from(slice))),
+                },
+            );
 
             let name = name.as_str();
             if TIMING_KEYWORDS.contains(name) {
@@ -182,6 +198,17 @@ impl EclSummary {
                 }
             }
         }
-        summary
+        Ok(summary)
+    }
+}
+
+fn transmute_slice(slice: &[f32]) -> ah::Result<&[u8]> {
+    unsafe {
+        let ptr = slice.as_ptr() as *const u8;
+        let len = slice
+            .len()
+            .checked_mul(std::mem::size_of::<f32>())
+            .with_context(|| "Too many bytes in a data record")?;
+        Ok(std::slice::from_raw_parts(ptr, len))
     }
 }

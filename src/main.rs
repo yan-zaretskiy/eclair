@@ -52,7 +52,7 @@ fn main() -> ah::Result<()> {
     let smspec = EclBinFile::new(input_path.with_extension("SMSPEC"))?;
     let unsmry = EclBinFile::new(input_path.with_extension("UNSMRY"))?;
 
-    let summary = EclSummary::new(smspec, unsmry, opt.debug);
+    let summary = EclSummary::new(smspec, unsmry, opt.debug)?;
 
     // serialize summary data in the MessagePack format
     let res = rmps::to_vec_named(&summary)?;
