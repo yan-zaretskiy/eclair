@@ -43,3 +43,12 @@ Each file includes the simulation start date as a triplet of integers. All other
 - Well completion data: `file['completions'][(well_name, cell_index)][<keyword>]`;
 - Group data: `file['groups'][<group_name>][<keyword>]`;
 - Cell data: `file['cells'][<cell_index>][<keyword>]`;
+
+
+
+Note that each array of values is stored as a binary blob and given a MessagePack extension code of 2. Values are single precision floats, so they can be decoded with something like (using `numpy` as an example):
+
+```python
+np.frombuffer(data, dtype=np.float32)
+```
+
