@@ -61,7 +61,7 @@ pub struct EclSummary {
 
     /// Performance data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    perf: HashMap<FixedString, EclSummaryRecord>,
+    performance: HashMap<FixedString, EclSummaryRecord>,
 
     /// Field data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
@@ -89,7 +89,7 @@ pub struct EclSummary {
 
     /// Cell data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    cells: HashMap<i32, HashMap<FixedString, EclSummaryRecord>>,
+    blocks: HashMap<i32, HashMap<FixedString, EclSummaryRecord>>,
 }
 
 impl EclSummary {
@@ -159,7 +159,7 @@ impl EclSummary {
             if TIMING_KEYWORDS.contains(name) {
                 summary.time.extend(hm);
             } else if PERFORMANCE_KEYWORDS.contains(name) {
-                summary.perf.extend(hm);
+                summary.performance.extend(hm);
             } else {
                 let is_wg_valid = wg.len() > 0 && wg != *WEIRD_STRING;
                 let is_num_valid = num > 0;
@@ -184,7 +184,7 @@ impl EclSummary {
                         summary.groups.entry(wg).or_default().extend(hm);
                     }
                     "B" if is_num_valid => {
-                        summary.cells.entry(num).or_default().extend(hm);
+                        summary.blocks.entry(num).or_default().extend(hm);
                     }
                     _ => {
                         if debug {
