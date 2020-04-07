@@ -3,19 +3,7 @@ import os
 import ipywidgets as wg
 import traitlets as tts
 
-from data_manager import DataManager, GLOBAL_TYPES, LOCAL_TYPES
-
-
-TYPE_TO_STRING = {
-    "perf": "Performance",
-    "field": "Field",
-    "regions": "Regions",
-    "aquifers": "Aquifers",
-    "wells": "Wells",
-    "completions": "Completions",
-    "groups": "Groups",
-    "cells": "Cells",
-}
+from data_manager import DataManager, LOCAL_TYPES
 
 
 class DataSelector(tts.HasTraits):
@@ -126,9 +114,9 @@ class DataSelector(tts.HasTraits):
         # now we can update the selector widgets
         self.type_selector.disabled = False
         if self.data_manager.common_keys is not None:
-            self.type_selector.options = [
-                (TYPE_TO_STRING[k], k) for k in self.data_manager.common_keys
-            ]
+            self.type_selector.options = sorted([
+                (k.capitalize(), k) for k in self.data_manager.common_keys
+            ], key=lambda x: x[0])
         else:
             # clear and disable all selection widgets
             self.type_selector.options = []

@@ -8,10 +8,8 @@ from traits.api import (
     cached_property,
     HasTraits,
     Dict,
-    List,
     Property,
     Tuple,
-    Unicode,
 )
 
 
@@ -71,9 +69,9 @@ def common_keys(summaries, union=False):
     return {k: common_keys([s.get(k) for s in summaries]) for k in keys}
 
 
-GLOBAL_TYPES = {"perf", "field"}
+GLOBAL_TYPES = {"performance", "field"}
 
-LOCAL_TYPES = {"regions", "aquifers", "wells", "completions", "groups", "cells"}
+LOCAL_TYPES = {"regions", "aquifers", "wells", "completions", "groups", "blocks"}
 
 
 class DataManager(HasTraits):
