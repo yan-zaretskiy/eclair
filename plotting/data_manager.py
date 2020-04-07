@@ -8,6 +8,7 @@ from traits.api import (
     cached_property,
     HasTraits,
     Dict,
+    List,
     Property,
     Tuple,
     Unicode,
@@ -62,26 +63,35 @@ def common_keys(summaries, union=False):
     keys = set(summaries[0].keys())
     for s in summaries[1:]:
         if union:
-            keys &= s.keys()
-        else:
             keys |= s.keys()
+        else:
+            keys &= s.keys()
     keys -= {"start_date", "time"}
 
     return {k: common_keys([s.get(k) for s in summaries]) for k in keys}
 
 
-NEED_LOCATION = {"regions", "aquifers", "wells", "completions", "groups", "cells"}
+GLOBAL_TYPES = {"perf", "field"}
+
+LOCAL_TYPES = {"regions", "aquifers", "wells", "completions", "groups", "cells"}
 
 
 class DataManager(HasTraits):
     """Class that holds a collection of summary data."""
 
-    all_keywords = Bool(False)
+    # Tuple is needed by the DataSelector, so I used it instead of a List
     selected_paths = Tuple(Unicode)
 
+    # actual summary data mapped to a file path
     summary_data = Dict()
+
+    # extracted datetime array per file path
     dates = Dict()
 
+    # currently untested
+    all_keywords = Bool(False)
+
+    # currently untested
     common_keys = Property(depends_on=["summary_data, add_keywords, selected_paths"])
 
     def add_summary(self, path):
@@ -116,7 +126,7 @@ class DataManager(HasTraits):
             return None
         res = res[kw_type]
 
-        if kw_type in NEED_LOCATION:
+        if kw_type in LOCAL_TYPES:
             res = res.get(kw_loc)
         if res is None:
             return None
@@ -129,3 +139,10 @@ class DataManager(HasTraits):
         return common_keys(
             [self.summary_data[p] for p in self.selected_paths], self.all_keywords
         )
+
+
+def build_data_manager(paths):
+    dm = DataManager()
+    for p in paths:
+        dm.add_summary(p)
+    return dm
