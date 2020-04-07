@@ -80,7 +80,7 @@ class DataManager(HasTraits):
     """Class that holds a collection of summary data."""
 
     # Tuple is needed by the DataSelector, so I used it instead of a List
-    selected_paths = Tuple(Unicode)
+    selected_paths = Tuple()
 
     # actual summary data mapped to a file path
     summary_data = Dict()

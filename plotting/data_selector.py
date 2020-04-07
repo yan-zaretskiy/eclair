@@ -6,6 +6,18 @@ import traitlets as tts
 from data_manager import DataManager, GLOBAL_TYPES, LOCAL_TYPES
 
 
+TYPE_TO_STRING = {
+    "perf": "Performance",
+    "field": "Field",
+    "regions": "Regions",
+    "aquifers": "Aquifers",
+    "wells": "Wells",
+    "completions": "Completions",
+    "groups": "Groups",
+    "cells": "Cells",
+}
+
+
 class DataSelector(tts.HasTraits):
     # an object that we view
     data_manager = tts.Instance(DataManager).tag(sync=True)
@@ -19,18 +31,18 @@ class DataSelector(tts.HasTraits):
             rows=5,
             description="Open Files:",
             disabled=False,
-            layout=wg.Layout(width="95%"),
+            layout=wg.Layout(width="auto"),
         ),
     ).tag(sync=True)
 
     # Type of a keyword to plot
     type_selector = tts.Instance(
-        wg.ToggleButtons,
+        wg.RadioButtons,
         kw=dict(
-            options=[(tp[0].upper(), tp) for tp in GLOBAL_TYPES | LOCAL_TYPES],
+            options=[],
             description="Type:",
             disabled=True,
-            style={"button_width": "29px"},
+            layout=wg.Layout(width="auto"),
         ),
     ).tag(sync=True)
 
@@ -41,7 +53,7 @@ class DataSelector(tts.HasTraits):
             options=[],
             description="Location:",
             disabled=True,
-            layout=wg.Layout(width="95%"),
+            layout=wg.Layout(width="auto"),
         ),
     ).tag(sync=True)
 
@@ -52,7 +64,7 @@ class DataSelector(tts.HasTraits):
             options=[],
             description="Keyword:",
             disabled=True,
-            layout=wg.Layout(width="95%"),
+            layout=wg.Layout(width="auto"),
         ),
     ).tag(sync=True)
 
@@ -97,7 +109,7 @@ class DataSelector(tts.HasTraits):
                 self.kw_selector,
                 # self.use_all_kws,
             ],
-            layout=wg.Layout(height="auto", width="370px"),
+            layout=wg.Layout(height="auto", width="350px"),
         )
 
     # Private event handlers
@@ -113,9 +125,18 @@ class DataSelector(tts.HasTraits):
 
         # now we can update the selector widgets
         self.type_selector.disabled = False
-        self.type_selector.options = [
-            (k[0].upper(), k) for k in self.data_manager.common_keys
-        ]
+        if self.data_manager.common_keys is not None:
+            self.type_selector.options = [
+                (TYPE_TO_STRING[k], k) for k in self.data_manager.common_keys
+            ]
+        else:
+            # clear and disable all selection widgets
+            self.type_selector.options = []
+            self.type_selector.disabled = True
+            self.kw_selector.options = []
+            self.kw_selector.disabled = True
+            self.loc_selector.options = []
+            self.loc_selector.disabled = True
 
     def _type_selected(self, change):
         """Populate the location and keyword selectors options."""
@@ -149,6 +170,9 @@ class DataSelector(tts.HasTraits):
     # Private methods
     def _update_selector(self, selector):
         """Update selectors and trigger plotting"""
+        if self.data_manager.common_keys is None:
+            return
+
         selector.disabled = False
         cur_type = self.type_selector.value
         cur_type_keys = self.data_manager.common_keys[cur_type]
