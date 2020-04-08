@@ -1,0 +1,12 @@
+name: eclair
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - msgpack-python
+  - numpy
+  - traits
+  - ipywidgets=7.5
+  - notebook[version='>=5.3']
+  - plotly=4.6.0

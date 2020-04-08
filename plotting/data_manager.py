@@ -100,19 +100,21 @@ class DataManager(HasTraits):
         self.summary_data[path] = load_summary(path)
         self.dates[path] = get_dates(self.summary_data[path])
 
-    def get_dates(self, path):
-        """Get a vector of dates for a given summary."""
-        return self.dates[path]
-
     def file_paths(self):
         """Return all file paths for the loaded summary data."""
-        return list(self.summary_data.keys())
+        return self.summary_data.keys()
 
     def unload_files(self, paths):
         """Delete unnecessary data."""
         for p in paths:
             del self.summary_data[p]
             del self.dates[p]
+
+    def selected_data(self, cur_type, cur_loc, cur_kw):
+        return [
+            self.get_data(path, cur_type, cur_loc, cur_kw)
+            for path in self.selected_paths
+        ]
 
     def get_data(self, path, kw_type, kw_loc, kw_name):
         """Given the three keys, grabs the corresponding data vector."""
@@ -138,9 +140,9 @@ class DataManager(HasTraits):
             [self.summary_data[p] for p in self.selected_paths], self.all_keywords
         )
 
-
-def build_data_manager(paths):
-    dm = DataManager()
-    for p in paths:
-        dm.add_summary(p)
-    return dm
+    @classmethod
+    def build(cls, paths):
+        dm = cls()
+        for p in paths:
+            dm.add_summary(p)
+        return dm
