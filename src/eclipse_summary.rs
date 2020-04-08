@@ -38,6 +38,8 @@ static PERFORMANCE_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
 
 static WEIRD_STRING: Lazy<FixedString> = Lazy::new(|| FixedString::from(":+:+:+:+").unwrap());
 
+const VEC_EXT_CODE: i8 = 2;
+
 #[derive(Debug, Default, Serialize)]
 #[serde(rename = "_ExtStruct")]
 struct ExtVec((i8, serde_bytes::ByteBuf));
@@ -151,7 +153,7 @@ impl EclSummary {
                 name,
                 EclSummaryRecord {
                     unit,
-                    values: ExtVec((2, serde_bytes::ByteBuf::from(slice))),
+                    values: ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(slice))),
                 },
             );
 
