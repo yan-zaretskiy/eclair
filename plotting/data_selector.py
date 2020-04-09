@@ -105,6 +105,7 @@ class DataSelector(tts.HasTraits):
                 [(k.capitalize(), k) for k in self.data_manager.common_keys],
                 key=lambda x: x[0],
             )
+            self._propagate_type_selection(self.type_selector.value)
         else:
             # clear and disable all selection widgets
             self.type_selector.options = []
@@ -113,17 +114,10 @@ class DataSelector(tts.HasTraits):
             self.kw_selector.disabled = True
             self.loc_selector.options = []
             self.loc_selector.disabled = True
-        self.request_plot += 1
 
     def _type_selected(self, change):
         """Populate the location and keyword selectors options."""
-        if change["new"] in LOCAL_TYPES:
-            self.kw_selector.disabled = True
-            self._update_selector(selector=self.loc_selector)
-        else:
-            self.loc_selector.disabled = True
-            self.loc_selector.options = []
-            self._update_selector(selector=self.kw_selector)
+        self._propagate_type_selection(change["new"])
 
     def _loc_selected(self, change):
         """Populate the keyword selector options."""
@@ -144,6 +138,16 @@ class DataSelector(tts.HasTraits):
         self.request_plot += 1
 
     # Private methods
+    def _propagate_type_selection(self, value):
+        """Populate the location and keyword selectors options."""
+        if value in LOCAL_TYPES:
+            self.kw_selector.disabled = True
+            self._update_selector(selector=self.loc_selector)
+        else:
+            self.loc_selector.disabled = True
+            self.loc_selector.options = []
+            self._update_selector(selector=self.kw_selector)
+
     def _update_selector(self, selector):
         """Update selectors and trigger plotting"""
         if self.data_manager.common_keys is None:
