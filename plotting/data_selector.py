@@ -114,9 +114,10 @@ class DataSelector(tts.HasTraits):
         # now we can update the selector widgets
         self.type_selector.disabled = False
         if self.data_manager.common_keys is not None:
-            self.type_selector.options = sorted([
-                (k.capitalize(), k) for k in self.data_manager.common_keys
-            ], key=lambda x: x[0])
+            self.type_selector.options = sorted(
+                [(k.capitalize(), k) for k in self.data_manager.common_keys],
+                key=lambda x: x[0],
+            )
         else:
             # clear and disable all selection widgets
             self.type_selector.options = []
@@ -125,6 +126,7 @@ class DataSelector(tts.HasTraits):
             self.kw_selector.disabled = True
             self.loc_selector.options = []
             self.loc_selector.disabled = True
+        self.request_plot += 1
 
     def _type_selected(self, change):
         """Populate the location and keyword selectors options."""
@@ -140,7 +142,6 @@ class DataSelector(tts.HasTraits):
         """Populate the keyword selector options."""
         selection = change["new"]
         self._cached_locs[self.type_selector.value] = selection
-        self.kw_selector.disabled = False
         self._update_selector(selector=self.kw_selector)
 
     def _kw_selected(self, change):

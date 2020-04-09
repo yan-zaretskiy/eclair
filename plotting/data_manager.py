@@ -110,12 +110,6 @@ class DataManager(HasTraits):
             del self.summary_data[p]
             del self.dates[p]
 
-    def selected_data(self, cur_type, cur_loc, cur_kw):
-        return [
-            self.get_data(path, cur_type, cur_loc, cur_kw)
-            for path in self.selected_paths
-        ]
-
     def get_data(self, path, kw_type, kw_loc, kw_name):
         """Given the three keys, grabs the corresponding data vector."""
         if path not in self.summary_data:

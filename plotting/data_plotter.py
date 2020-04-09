@@ -18,8 +18,8 @@ class DataPlotter(tts.HasTraits):
 
         self.data_manager = data_manager
         self.fig = go.FigureWidget()
-        self.fig.layout.width = 1200
-        self.fig.layout.height = 800
+        self.fig.layout.width = 900
+        self.fig.layout.height = 600
         self.fig.layout.margin = {"l": 0, "r": 0, "b": 0}
         self.fig.layout.title.x = 0.5
         self.fig.layout.legend = {"orientation": "h"}
@@ -31,20 +31,28 @@ class DataPlotter(tts.HasTraits):
             )
 
     def update_traces(self, kw_type, kw_loc, kw_name):
-        values = self.data_manager.selected_data(kw_type, kw_loc, kw_name)
-
+        """Update all scatter plots when selection changes."""
+        dm = self.data_manager
         with self.fig.batch_update():
-            if len(values) > 0:
+            if len(dm.selected_paths) > 0:
                 if kw_loc is not None:
                     title = f"{kw_name} @ {kw_loc}"
                 else:
                     title = f"{kw_name}"
                 self.fig.layout.title.text = title
                 self.fig.layout.xaxis.title = "Date"
-                self.fig.layout.yaxis.title = f"{kw_name} [{values[0]['unit']}]"
-                for trace, v in zip(self.fig.data, values):
-                    trace.y = v["values"]
-                    trace.visible = True
+
+                value = None
+                for trace, path in zip(self.fig.data, dm.file_paths()):
+                    if path in dm.selected_paths:
+                        value = dm.get_data(path, kw_type, kw_loc, kw_name)
+                        trace.y = value["values"]
+                        trace.visible = True
+                    else:
+                        trace.y = []
+                        trace.visible = False
+                if value is not None:
+                    self.fig.layout.yaxis.title = f"{kw_name} [{value['unit']}]"
             else:
                 self.fig.layout.title.text = ""
                 self.fig.layout.xaxis.title = ""
