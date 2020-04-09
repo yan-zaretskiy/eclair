@@ -34,14 +34,14 @@ impl EclBinData {
     fn new(raw_dtype: &[u8]) -> ah::Result<Self> {
         use EclBinData::*;
         match str::from_utf8(raw_dtype) {
-            Ok("INTE") => Ok(Int(vec![])),
-            Ok("REAL") => Ok(Float(vec![])),
-            Ok("DOUB") => Ok(Double(vec![])),
-            Ok("LOGI") => Ok(Logical(vec![])),
-            Ok("CHAR") => Ok(FixStr(vec![])),
+            Ok("INTE") => Ok(Int(Vec::new())),
+            Ok("REAL") => Ok(Float(Vec::new())),
+            Ok("DOUB") => Ok(Double(Vec::new())),
+            Ok("LOGI") => Ok(Logical(Vec::new())),
+            Ok("CHAR") => Ok(FixStr(Vec::new())),
             Ok("MESS") => Ok(Message),
             Ok(s) if s.starts_with("C0") && s.len() == 4 => match s[2..].parse::<usize>() {
-                Ok(len) => Ok(DynStr(len, vec![])),
+                Ok(len) => Ok(DynStr(len, Vec::new())),
                 Err(_) => Err(EclError::InvalidString(s[2..].to_owned()).into()),
             },
             _ => Err(EclError::InvalidString("<String failed to parse>".to_owned()).into()),
