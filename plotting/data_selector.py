@@ -87,19 +87,6 @@ class DataSelector(tts.HasTraits):
         """Currently selected options."""
         return self.type_selector.value, self.loc_selector.value, self.kw_selector.value
 
-    def view(self):
-        """ipywidget to display the DataSelector in a Jupyter Notebook"""
-        return wg.VBox(
-            [
-                self.file_selector,
-                self.type_selector,
-                self.loc_selector,
-                self.kw_selector,
-                # self.use_all_kws,
-            ],
-            layout=wg.Layout(height="auto", width="350px"),
-        )
-
     # Private event handlers
     def _file_selected(self, change):
         """Compute all the common keys and populate the type selector options."""
