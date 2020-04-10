@@ -59,6 +59,8 @@ pub struct EclSummary {
     start_date: (i32, i32, i32),
 
     /// Time data, should always be present
+    /// erichdongubler: would it be worth having a separate struct with fields always expected to
+    /// be here?
     time: HashMap<FixedString, EclSummaryRecord>,
 
     /// Performance data
