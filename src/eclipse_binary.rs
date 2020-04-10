@@ -99,9 +99,9 @@ impl EclBinData {
     }
 
     fn append(&mut self, raw_data: &[u8]) {
-        for chunk in raw_data.chunks(self.element_size()) {
+        raw_data.chunks(self.element_size()).for_each(|chunk| {
             self.push(chunk);
-        }
+        });
     }
 }
 
