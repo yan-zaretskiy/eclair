@@ -207,6 +207,23 @@ impl EclSummary {
 }
 
 fn transmute_slice(slice: &[f32]) -> ah::Result<&[u8]> {
+    // erichdongubler: Two things that make me nervous about this implementation:
+    //
+    // 1. I THINK that this is implementation-defined behavior and not undefined behavior, since
+    //     the full range of bit values are valid for `f32` and `u8`. But...I'm not sure. This is
+    //     something that should be investigated for safety. I can't see anything in
+    //     ["Transmutes" section of the
+    //     Rustonomicon](https://doc.rust-lang.org/nomicon/transmutes.html).
+    // 2. Independent of #1, endianness is a concern here for portability. You should pick an
+    //     endianness to serialize with, as opposed to "depends on the target", because that's one
+    //     less issue when you want to make an awesome web app out of this. ;)
+    //
+    //     The easy solution to this would also solve #1, which is to use
+    //     [`f32::to_be_bytes`](https://doc.rust-lang.org/std/primitive.f32.html#method.to_be_bytes)
+    //     and
+    //     [`f32::from_be_bytes`](https://doc.rust-lang.org/std/primitive.f32.html#method.from_be_bytes)
+    //     to manage a new, separate buffer. I can understand performance concerns with that, and I
+    //     hope that we have a good compile-time way to detect endianness eventually.
     unsafe {
         let ptr = slice.as_ptr() as *const u8;
         let len = slice
