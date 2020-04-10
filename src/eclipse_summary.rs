@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+};
 
 use anyhow as ah;
 use anyhow::Context;
@@ -56,7 +59,7 @@ struct EclSummaryRecord {
 #[derive(Debug, Serialize, Default)]
 pub struct EclSummary {
     /// Simulation start date
-    start_date: (i32, i32, i32),
+    start_date: [i32; 3],
 
     /// Time data, should always be present
     /// erichdongubler: would it be worth having a separate struct with fields always expected to
@@ -99,7 +102,7 @@ pub struct EclSummary {
 impl EclSummary {
     pub fn new(smspec: EclBinFile, unsmry: EclBinFile, debug: bool) -> ah::Result<Self> {
         // 1. Parse the SMSPEC file for enough metadata to correctly place data records
-        let mut start_date = (0, 0, 0);
+        let mut start_date = [0; 3];
         let mut names = Vec::new();
         let mut wgnames = Vec::new();
         let mut nums = Vec::new();
@@ -111,7 +114,10 @@ impl EclSummary {
                 ("DIMENS", EclBinData::Int(dims)) => {
                     all_values.resize(dims[0] as usize, Default::default());
                 }
-                ("STARTDAT", EclBinData::Int(data)) => start_date = (data[0], data[1], data[2]),
+                ("STARTDAT", EclBinData::Int(data)) => match data.as_slice().try_into() {
+                    Ok(date) => start_date = date,
+                    Err(_e) => return Err(anyhow::anyhow!("invalid length for start date data")),
+                },
                 ("KEYWORDS", EclBinData::FixStr(data)) => {
                     names = data;
                 }
