@@ -1,6 +1,6 @@
 `eclair` aspires to be a set of tools to manipulate the outputs of the Eclipse reservoir simulator.
 
-At this point all it can do is convert `UNSMRY` files into a MessagePack format.
+At this point all it can do is convert `UNSMRY` files into the MessagePack format.
 
 ## Building
 
@@ -21,4 +21,4 @@ At this point all it can do is convert `UNSMRY` files into a MessagePack format.
     ```
 
 ## Inspecting results
-- Look inside the `plotting` folder for a simple Jupyter notebook that shows how to load data in Python and plot what you want. The `docs` folder contains a brief description of the MessagePack layout. The data is loaded in Python as a tree of nested dictionaries, so it's rather easy to inspect its contents.
+- Inside the `plotting` folder there is Python code that uses `ipywidgets` in a Jupyter notebook to load and display data from the MessagePack format. The `docs` folder contains a brief description of the MessagePack layout. The data is loaded in Python as a tree of nested dictionaries, so it's rather easy to inspect its contents manually. For this you'd only need to call the `load_summary(file_path)` method from the `data_manager.py` module.
