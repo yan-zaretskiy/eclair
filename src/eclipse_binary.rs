@@ -269,13 +269,12 @@ impl Iterator for EclBinFile {
     fn next(&mut self) -> Option<Self::Item> {
         match self.next_keyword() {
             Ok(kw) => Some(kw),
-            Err(e) => match e.downcast_ref::<EclError>() {
-                Some(_) => {
+            Err(e) => {
+                if e.is::<EclError>() {
                     println!("{:?}", e);
-                    None
                 }
-                None => None,
-            },
+                None
+            }
         }
     }
 }
