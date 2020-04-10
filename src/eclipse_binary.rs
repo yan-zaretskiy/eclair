@@ -7,6 +7,7 @@ use byteorder::{BigEndian, ByteOrder};
 
 use std::{
     cmp::min,
+    convert::TryInto,
     fs::File,
     io::{prelude::*, BufReader},
     path::Path,
@@ -44,19 +45,24 @@ impl EclBinData {
     const NUM_BLOCK_SIZE: usize = 1000;
     const STR_BLOCK_SIZE: usize = 105;
 
-    fn new(raw_dtype: &[u8]) -> ah::Result<Self> {
+    fn new(raw_dtype: &[u8; 4]) -> ah::Result<Self> {
         use EclBinData::*;
-        match str::from_utf8(raw_dtype) {
-            Ok("INTE") => Ok(Int(Vec::new())),
-            Ok("REAL") => Ok(Float(Vec::new())),
-            Ok("DOUB") => Ok(Double(Vec::new())),
-            Ok("LOGI") => Ok(Logical(Vec::new())),
-            Ok("CHAR") => Ok(FixStr(Vec::new())),
-            Ok("MESS") => Ok(Message),
-            Ok(s) if s.starts_with("C0") && s.len() == 4 => match s[2..].parse::<usize>() {
-                Ok(len) => Ok(DynStr(len, Vec::new())),
-                Err(_) => Err(EclError::InvalidString(s[2..].to_owned()).into()),
-            },
+        match raw_dtype {
+            b"INTE" => Ok(Int(Vec::new())),
+            b"REAL" => Ok(Float(Vec::new())),
+            b"DOUB" => Ok(Double(Vec::new())),
+            b"LOGI" => Ok(Logical(Vec::new())),
+            b"CHAR" => Ok(FixStr(Vec::new())),
+            b"MESS" => Ok(Message),
+            [b'C', b'0', rest @ ..] => {
+                let len = if rest.iter().all(u8::is_ascii_digit) {
+                    unsafe { str::from_utf8_unchecked(rest).parse().unwrap() }
+                } else {
+                    return Err(anyhow::anyhow!("invalid string length {:X?}", rest));
+                };
+
+                Ok(DynStr(len, Vec::new()))
+            }
             _ => Err(EclError::InvalidString("<String failed to parse>".to_owned()).into()),
         }
     }
@@ -175,7 +181,9 @@ mod parsing {
             .with_context(|| "Failed to read a number of elements in a keyword array.")?;
 
         // 4-character string for a data type
-        let (dtype, _) = take(4, header).with_context(|| "Failed to read a data type string.")?;
+        let (dtype, header) =
+            take(4, header).with_context(|| "Failed to read a data type string.")?;
+        let dtype = dtype.try_into().unwrap();
 
         assert!(header.is_empty(), "keyword header not completely consumed");
 
