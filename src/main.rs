@@ -70,10 +70,10 @@ fn main() -> ah::Result<()> {
 
     let summary = EclSummary::new(smspec, unsmry, opt.debug)?;
 
-    let mut out_file = match opt.output {
-        Some(p) => File::create(p)?,
-        None => File::create(input_path.with_extension("mpk"))?,
-    };
+    let mut out_file = File::create(
+        opt.output
+            .unwrap_or_else(|| input_path.with_extension("mpk")),
+    )?;
 
     // serialize summary data in the MessagePack format
     rmps::encode::write_named(&mut out_file, &summary)?;
