@@ -26,6 +26,16 @@ pub enum EclBinData {
     Double(Vec<f64>),
     Logical(Vec<i32>),
     FixStr(Vec<FixedString>),
+    /// erichdongubler: The size here is necessary because this potentially hasn't been constructed
+    /// yet, right? I wonder if it'd be worth having a "canonical" struct similar to this that
+    /// guarantees fully constructed data at the type level. It's hard to want to do that for a
+    /// single variant, but if you wanted to publish this as a lib I'd encourage you to consider
+    /// it.
+    ///
+    /// Another way that this could be done is by using this as the canonical representation
+    /// everywhere except in construction paths like `parsing::keyword_header`, and use a tuple to
+    /// indicate the number of elements expected. That would actually normalize well with how
+    /// you're doing it already!
     DynStr(usize, Vec<String>),
     Message,
 }
@@ -168,6 +178,7 @@ mod parsing {
 
         // Init the data storage with the correct type
         let data = EclBinData::new(dtype).with_context(|| "Failed to parse a data type.")?;
+        // erichdongubler: See note about normalizing in the definition of `EclBinData`.
         Ok((name, n_elements as usize, data))
     }
 
