@@ -232,6 +232,16 @@ impl EclBinFile {
         })
     }
 
+    // erichdongubler: This looks like this should consume `self` and return it again if we don't
+    // error out here. Why? Well..there's no guarantee that this method actually recovers the read
+    // stream correctly and that one can call `Self::next_keyword` again and expect sane results!
+    // Or even worse, what if we fail the first time for valid reasons, attempt to read again, and
+    // the (decidedly garbage) stream you're getting just HAPPENS to have things that look like
+    // valid ECL data?
+    //
+    // This would make it impossible to continue with an `Iterator` implementation for
+    // `EclBinFile`, but...it's not a bad API to have a special flavor of iteration if correctness
+    // calls for it!
     fn next_keyword(&mut self) -> ah::Result<EclBinKeyword> {
         // Look at the next 24 bytes and try reading the header;
         let mut header_buf = [0u8; 24];
@@ -250,6 +260,8 @@ impl EclBinFile {
     }
 }
 
+/// erichdongubler: I'm honestly not a fan of this `Iterator` implementation. Why not just make
+/// client code do this?
 impl Iterator for EclBinFile {
     type Item = EclBinKeyword;
 
