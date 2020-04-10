@@ -16,6 +16,9 @@ use std::{
 pub type FixedString = ArrayString<[u8; 8]>;
 
 /// Represents a body of data in a binary record in an Eclipse file
+/// erichdongubler: How often are the number of elements here small? I'm wondering if using
+/// something like [`smallvec`](https://docs.rs/smallvec) might be an interesting optimization
+/// option here.
 #[derive(Debug, PartialEq)]
 pub enum EclBinData {
     Int(Vec<i32>),
