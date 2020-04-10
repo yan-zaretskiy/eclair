@@ -165,6 +165,7 @@ mod parsing {
         let name = FixedString::from(
             str::from_utf8(name)
                 .with_context(|| "Failed to parse a keyword name as an 8-char string.")?
+                // erichdongubler: Remind me...is whitespace padded at the end of these string values?
                 .trim(),
         )
         .unwrap(); // this unwrap is fine, because we pass exactly 8 characters
