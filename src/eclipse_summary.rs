@@ -140,7 +140,7 @@ impl EclSummary {
             }
         }
 
-        // 3. Now we have all the data read, let't put it in where it belongs
+        // 3. Now we have all the data read, let's put it in where it belongs
         let mut summary = EclSummary {
             start_date,
             ..Default::default()
