@@ -28,6 +28,10 @@ struct Opt {
     output: Option<PathBuf>,
 
     /// Prints debug info
+    ///
+    /// erichdongubler: You would probably better served using the `log` crate
+    /// and the right filter instead of having a `debug` flag here. It would
+    /// let clients control if things output AND how it's logged.
     #[structopt(short, long)]
     debug: bool,
 
