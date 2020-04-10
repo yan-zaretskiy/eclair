@@ -155,7 +155,7 @@ mod parsing {
         Ok((data, input))
     }
 
-    pub(super) fn keyword_header(input: &[u8]) -> ah::Result<(FixedString, usize, EclBinData)> {
+    pub(super) fn keyword_header(input: &[u8; 24]) -> ah::Result<(FixedString, usize, EclBinData)> {
         // header record, must be 16 bytes long in total
         let (header, _) =
             single_record_with_size(16, input).with_context(|| "Failed to read a data header.")?;
@@ -175,6 +175,8 @@ mod parsing {
 
         // 4-character string for a data type
         let (dtype, _) = take(4, header).with_context(|| "Failed to read a data type string.")?;
+
+        assert!(header.is_empty(), "keyword header not completely consumed");
 
         // Init the data storage with the correct type
         let data = EclBinData::new(dtype).with_context(|| "Failed to parse a data type.")?;
