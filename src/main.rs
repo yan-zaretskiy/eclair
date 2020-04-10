@@ -33,7 +33,7 @@ struct Opt {
 
     /// Dump SMSPEC contents
     #[structopt(long)]
-    dump_smspec: bool
+    dump_smspec: bool,
 }
 
 fn main() -> ah::Result<()> {
