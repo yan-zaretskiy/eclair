@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import plotly.graph_objects as go
 import traitlets as tts
 
@@ -25,10 +26,14 @@ class DataPlotter(tts.HasTraits):
         for p in self.data_manager.file_paths():
             dates = self.data_manager.dates[p]
             self.fig.add_scatter(
-                x=dates, visible=False, showlegend=True, name=os.path.basename(p)
+                x=dates,
+                visible=False,
+                showlegend=True,
+                name=os.path.basename(p),
+                mode="lines",
             )
 
-    def update_traces(self, kw_type, kw_loc, kw_name):
+    def update_traces(self, kw_type, kw_loc, kw_name, reference, plot_deltas):
         """Update all scatter plots when selection changes."""
         dm = self.data_manager
         with self.fig.batch_update():
@@ -40,11 +45,28 @@ class DataPlotter(tts.HasTraits):
                 self.fig.layout.title.text = title
                 self.fig.layout.xaxis.title = "Date"
 
+                # first we have to pick a reference data
+                x_ref, y_ref = 0.0, 0.0
+                if plot_deltas:
+                    for path in dm.file_paths():
+                        if path == reference:
+                            dates_ref = dm.dates[path]
+                            x_ref = (dates_ref - dates_ref[0]).astype(np.float32)
+                            y_ref = dm.get_data(path, kw_type, kw_loc, kw_name)[
+                                "values"
+                            ]
+
                 value = None
                 for trace, path in zip(self.fig.data, dm.file_paths()):
                     if path in dm.selected_paths:
                         value = dm.get_data(path, kw_type, kw_loc, kw_name)
-                        trace.y = value["values"]
+                        if plot_deltas:
+                            # we need to interpolate on a 1D datetime grid
+                            dates = dm.dates[path]
+                            x = (dates - dates[0]).astype(np.float32)
+                            trace.y = value["values"] - np.interp(x, x_ref, y_ref)
+                        else:
+                            trace.y = value["values"]
                         trace.visible = True
                     else:
                         trace.y = []

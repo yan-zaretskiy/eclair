@@ -45,7 +45,7 @@ class DataSelector(tts.HasTraits):
         ),
     ).tag(sync=True)
 
-    # list of availbale keyword names for a given type/location
+    # list of available keyword names for a given type/location
     kw_selector = tts.Instance(
         wg.Dropdown,
         kw=dict(
@@ -54,6 +54,22 @@ class DataSelector(tts.HasTraits):
             disabled=True,
             layout=wg.Layout(width="auto"),
         ),
+    ).tag(sync=True)
+
+    # reference summary for plotting deltas
+    ref_selector = tts.Instance(
+        wg.Dropdown,
+        kw=dict(
+            options=[],
+            description="Reference:",
+            disabled=True,
+            layout=wg.Layout(width="auto"),
+        ),
+    ).tag(sync=True)
+
+    # plot values or their deltas wrt to a reference
+    plot_deltas = tts.Instance(
+        wg.Checkbox, kw=dict(value=False, description="Plot deltas")
     ).tag(sync=True)
 
     # currently unused - option to list either union or intersection of keywords
@@ -82,10 +98,18 @@ class DataSelector(tts.HasTraits):
         self.type_selector.observe(self._type_selected, names="value")
         self.loc_selector.observe(self._loc_selected, names="value")
         self.kw_selector.observe(self._kw_selected, names="value")
+        self.ref_selector.observe(self._request_plot, names="value")
+        self.plot_deltas.observe(self._request_plot, names="value")
 
     def selections(self):
         """Currently selected options."""
-        return self.type_selector.value, self.loc_selector.value, self.kw_selector.value
+        return (
+            self.type_selector.value,
+            self.loc_selector.value,
+            self.kw_selector.value,
+            self.ref_selector.value,
+            self.plot_deltas.value,
+        )
 
     # Private event handlers
     def _file_selected(self, change):
@@ -106,6 +130,11 @@ class DataSelector(tts.HasTraits):
                 key=lambda x: x[0],
             )
             self._propagate_type_selection(self.type_selector.value)
+
+            self.ref_selector.disabled = False
+            self.ref_selector.options = [
+                (os.path.basename(v), v) for v in self.file_selector.value
+            ]
         else:
             # clear and disable all selection widgets
             self.type_selector.options = []
@@ -114,6 +143,8 @@ class DataSelector(tts.HasTraits):
             self.kw_selector.disabled = True
             self.loc_selector.options = []
             self.loc_selector.disabled = True
+            self.ref_selector.options = []
+            self.ref_selector.disabled = True
 
     def _type_selected(self, change):
         """Populate the location and keyword selectors options."""
@@ -177,4 +208,8 @@ class DataSelector(tts.HasTraits):
         if cached_value is not None:
             selector.value = cached_value
 
+        self.request_plot += 1
+
+    def _request_plot(self, change):
+        """So that I can make this an observer."""
         self.request_plot += 1

@@ -29,6 +29,10 @@ struct Opt {
     /// Prints debug info
     #[structopt(short, long)]
     debug: bool,
+
+    /// Dump SMSPEC contents
+    #[structopt(long)]
+    dump_smspec: bool
 }
 
 fn main() -> ah::Result<()> {
@@ -51,6 +55,13 @@ fn main() -> ah::Result<()> {
 
     let smspec = EclBinFile::new(input_path.with_extension("SMSPEC"))?;
     let unsmry = EclBinFile::new(input_path.with_extension("UNSMRY"))?;
+
+    if opt.dump_smspec {
+        for kw in smspec {
+            println!("{:#?}", kw);
+        }
+        return Ok(());
+    }
 
     let summary = EclSummary::new(smspec, unsmry, opt.debug)?;
 

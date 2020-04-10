@@ -13,6 +13,14 @@ from traits.api import (
 )
 
 
+def decode_start_date(obj):
+    if "start_date" in obj:
+        obj["start_date"] = np.datetime64(
+            datetime.datetime(*reversed(obj["start_date"]))
+        )
+    return obj
+
+
 def ext_hook(code, data):
     """Read code-2 data as float32 numpy arrays."""
     if code == 2:
@@ -26,30 +34,19 @@ def load_summary(path):
         raw_bytes = fp.read()
 
     return msgpack.unpackb(
-        raw_bytes, strict_map_key=False, use_list=False, ext_hook=ext_hook
+        raw_bytes,
+        strict_map_key=False,
+        use_list=False,
+        ext_hook=ext_hook,
+        object_hook=decode_start_date,
     )
 
 
 def get_dates(summary):
     """Extract a list of dates from a summary."""
-    time_data = summary["time"]
-    if "YEAR" in time_data and "MONTH" in time_data and "DAY" in time_data:
-        # easy path first
-        return [
-            datetime.datetime(y, m, d)
-            for (y, m, d) in zip(
-                time_data["YEAR"]["values"],
-                time_data["MONTH"]["values"],
-                time_data["DAY"]["values"],
-            )
-        ]
-    else:
-        # do all the work ourselves
-        start_date = datetime.datetime(*reversed(summary["start_date"]))
-        return [
-            start_date + datetime.timedelta(seconds=int(d * 86400))
-            for d in time_data["TIME"]["values"]
-        ]
+    return summary["start_date"] + (summary["time"]["TIME"]["values"] * 84600).astype(
+        "timedelta64[s]"
+    )
 
 
 def common_keys(summaries, union=False):
