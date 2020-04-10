@@ -10,7 +10,7 @@ use anyhow as ah;
 use rmp_serde as rmps;
 use structopt::StructOpt;
 
-use std::{fs::File, io::prelude::*, path::PathBuf};
+use std::{fs::File, path::PathBuf};
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -66,15 +66,13 @@ fn main() -> ah::Result<()> {
 
     let summary = EclSummary::new(smspec, unsmry, opt.debug)?;
 
-    // serialize summary data in the MessagePack format
-    let res = rmps::to_vec_named(&summary)?;
-
     let mut out_file = match opt.output {
         Some(p) => File::create(p)?,
         None => File::create(input_path.with_extension("mpk"))?,
     };
 
-    out_file.write_all(&res)?;
+    // serialize summary data in the MessagePack format
+    rmps::encode::write_named(&mut out_file, &summary)?;
 
     Ok(())
 }
