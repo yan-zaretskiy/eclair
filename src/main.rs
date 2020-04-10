@@ -16,6 +16,7 @@ use std::{fs::File, io::prelude::*, path::PathBuf};
 #[structopt(
     name = "eclair",
     about = "A converter of Eclipse summary files to MessagePack."
+    // erichdongubler: Did you want an `authors` here too?
 )]
 struct Opt {
     /// Input file
