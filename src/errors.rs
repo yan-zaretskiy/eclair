@@ -1,22 +1,34 @@
 use thiserror::Error;
 
+/// File reading/writing errors
 #[derive(Error, Debug)]
-pub enum EclError {
+pub enum EclFileError {
+    #[error("Invalid file path")]
+    InvalidFilePath,
+
+    #[error("Invalid file extension")]
+    InvalidFileExt,
+}
+
+/// Binary parsing errors
+#[derive(Error, Debug)]
+pub enum EclBinaryError {
     #[error("Not enough bytes in the input. Expected {expected:?}, found {found:?}.")]
     NotEnoughBytes { expected: usize, found: usize },
 
     #[error("Head and tail markers mismatch in a binary record. Head {head:?}, tail {tail:?}.")]
     HeadTailMismatch { head: i32, tail: i32 },
 
-    #[error("Invalid string value: {0}")]
-    InvalidString(String),
+    #[error("Invalid data type value: {0}")]
+    InvalidDataType(String),
 
     #[error("Record size mismatch. Expected {expected:?}, found {found:?}.")]
-    RecordSize { expected: usize, found: usize },
+    RecordSizeMismatch { expected: usize, found: usize },
+}
 
-    #[error("Invalid file path")]
-    InvalidFilePath,
-
-    #[error("Invalid file extension")]
-    InvalidFileExt,
+/// Summary parsing errors
+#[derive(Error, Debug)]
+pub enum EclSummaryError {
+    #[error("Invalid length for start date data. Expected {expected:?}, found {found:?}.")]
+    InvalidStartDateLength { expected: usize, found: usize },
 }

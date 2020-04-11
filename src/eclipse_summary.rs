@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+};
 
 use anyhow as ah;
 use anyhow::Context;
@@ -8,6 +11,7 @@ use serde::Serialize;
 use serde_bytes;
 
 use crate::eclipse_binary::{EclBinData, EclBinFile, FixedString};
+use crate::errors::EclSummaryError;
 
 static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     let mut s = HashSet::new();
@@ -56,7 +60,7 @@ struct EclSummaryRecord {
 #[derive(Debug, Serialize, Default)]
 pub struct EclSummary {
     /// Simulation start date
-    start_date: (i32, i32, i32),
+    start_date: [i32; 3],
 
     /// Time data, should always be present
     time: HashMap<FixedString, EclSummaryRecord>,
@@ -97,7 +101,7 @@ pub struct EclSummary {
 impl EclSummary {
     pub fn new(smspec: EclBinFile, unsmry: EclBinFile, debug: bool) -> ah::Result<Self> {
         // 1. Parse the SMSPEC file for enough metadata to correctly place data records
-        let mut start_date = (0, 0, 0);
+        let mut start_date = [0; 3];
         let mut names = Vec::new();
         let mut wgnames = Vec::new();
         let mut nums = Vec::new();
@@ -109,7 +113,16 @@ impl EclSummary {
                 ("DIMENS", EclBinData::Int(dims)) => {
                     all_values.resize(dims[0] as usize, Default::default());
                 }
-                ("STARTDAT", EclBinData::Int(data)) => start_date = (data[0], data[1], data[2]),
+                ("STARTDAT", EclBinData::Int(data)) => match data.len() {
+                    len @ 0..=2 => {
+                        return Err(EclSummaryError::InvalidStartDateLength {
+                            expected: 3,
+                            found: len,
+                        }
+                        .into())
+                    }
+                    _ => start_date = data[..2].try_into().unwrap(),
+                },
                 ("KEYWORDS", EclBinData::FixStr(data)) => {
                     names = data;
                 }
@@ -138,7 +151,7 @@ impl EclSummary {
             }
         }
 
-        // 3. Now we have all the data read, let't put it in where it belongs
+        // 3. Now we have all the data read, let's put it in where it belongs
         let mut summary = EclSummary {
             start_date,
             ..Default::default()

@@ -1,4 +1,4 @@
-use crate::errors::EclError;
+use crate::errors::EclBinaryError;
 
 use anyhow as ah;
 use anyhow::Context;
@@ -7,6 +7,7 @@ use byteorder::{BigEndian, ByteOrder};
 
 use std::{
     cmp::min,
+    convert::TryInto,
     fs::File,
     io::{prelude::*, BufReader},
     path::Path,
@@ -31,20 +32,28 @@ impl EclBinData {
     const NUM_BLOCK_SIZE: usize = 1000;
     const STR_BLOCK_SIZE: usize = 105;
 
-    fn new(raw_dtype: &[u8]) -> ah::Result<Self> {
+    fn new(raw_dtype: &[u8; 4]) -> ah::Result<Self> {
         use EclBinData::*;
-        match str::from_utf8(raw_dtype) {
-            Ok("INTE") => Ok(Int(Vec::new())),
-            Ok("REAL") => Ok(Float(Vec::new())),
-            Ok("DOUB") => Ok(Double(Vec::new())),
-            Ok("LOGI") => Ok(Logical(Vec::new())),
-            Ok("CHAR") => Ok(FixStr(Vec::new())),
-            Ok("MESS") => Ok(Message),
-            Ok(s) if s.starts_with("C0") && s.len() == 4 => match s[2..].parse::<usize>() {
-                Ok(len) => Ok(DynStr(len, Vec::new())),
-                Err(_) => Err(EclError::InvalidString(s[2..].to_owned()).into()),
-            },
-            _ => Err(EclError::InvalidString("<String failed to parse>".to_owned()).into()),
+        match raw_dtype {
+            b"INTE" => Ok(Int(Vec::new())),
+            b"REAL" => Ok(Float(Vec::new())),
+            b"DOUB" => Ok(Double(Vec::new())),
+            b"LOGI" => Ok(Logical(Vec::new())),
+            b"CHAR" => Ok(FixStr(Vec::new())),
+            b"MESS" => Ok(Message),
+            [b'C', b'0', rest @ ..] => {
+                let len = if rest.iter().all(u8::is_ascii_digit) {
+                    unsafe { str::from_utf8_unchecked(rest).parse().unwrap() }
+                } else {
+                    return Err(anyhow::anyhow!("invalid string length {:X?}", rest));
+                };
+
+                Ok(DynStr(len, Vec::new()))
+            }
+            _ => Err(EclBinaryError::InvalidDataType(
+                String::from_utf8_lossy(raw_dtype).to_string(),
+            )
+            .into()),
         }
     }
 
@@ -86,9 +95,9 @@ impl EclBinData {
     }
 
     fn append(&mut self, raw_data: &[u8]) {
-        for chunk in raw_data.chunks(self.element_size()) {
-            self.push(chunk);
-        }
+        raw_data
+            .chunks(self.element_size())
+            .for_each(|chunk| self.push(chunk));
     }
 }
 
@@ -98,7 +107,7 @@ mod parsing {
 
     fn take(size: usize, input: &[u8]) -> ah::Result<(&[u8], &[u8])> {
         if input.len() < size {
-            return Err(EclError::NotEnoughBytes {
+            return Err(EclBinaryError::NotEnoughBytes {
                 expected: size,
                 found: input.len(),
             }
@@ -126,14 +135,14 @@ mod parsing {
         if head == tail {
             Ok((data, input))
         } else {
-            Err(EclError::HeadTailMismatch { head, tail }.into())
+            Err(EclBinaryError::HeadTailMismatch { head, tail }.into())
         }
     }
 
     fn single_record_with_size(size: usize, input: &[u8]) -> ah::Result<(&[u8], &[u8])> {
         let (data, input) = single_record(input)?;
         if data.len() != size {
-            return Err(EclError::RecordSize {
+            return Err(EclBinaryError::RecordSizeMismatch {
                 expected: size,
                 found: data.len(),
             }
@@ -142,7 +151,7 @@ mod parsing {
         Ok((data, input))
     }
 
-    pub(super) fn keyword_header(input: &[u8]) -> ah::Result<(FixedString, usize, EclBinData)> {
+    pub(super) fn keyword_header(input: &[u8; 24]) -> ah::Result<(FixedString, usize, EclBinData)> {
         // header record, must be 16 bytes long in total
         let (header, _) =
             single_record_with_size(16, input).with_context(|| "Failed to read a data header.")?;
@@ -161,7 +170,11 @@ mod parsing {
             .with_context(|| "Failed to read a number of elements in a keyword array.")?;
 
         // 4-character string for a data type
-        let (dtype, _) = take(4, header).with_context(|| "Failed to read a data type string.")?;
+        let (dtype, header) =
+            take(4, header).with_context(|| "Failed to read a data type string.")?;
+        let dtype = dtype.try_into().unwrap();
+
+        assert!(header.is_empty(), "Keyword header not completely consumed");
 
         // Init the data storage with the correct type
         let data = EclBinData::new(dtype).with_context(|| "Failed to parse a data type.")?;
@@ -240,13 +253,12 @@ impl Iterator for EclBinFile {
     fn next(&mut self) -> Option<Self::Item> {
         match self.next_keyword() {
             Ok(kw) => Some(kw),
-            Err(e) => match e.downcast_ref::<EclError>() {
-                Some(_) => {
+            Err(e) => {
+                if e.is::<EclBinaryError>() {
                     println!("{:?}", e);
-                    None
                 }
-                None => None,
-            },
+                None
+            }
         }
     }
 }
@@ -254,6 +266,7 @@ impl Iterator for EclBinFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::convert::TryInto;
 
     #[test]
     fn single_record_test() {
@@ -271,7 +284,8 @@ mod tests {
     #[test]
     fn single_data_array_short() {
         let input = include_bytes!("../assets/single_data_array.bin");
-        let (name, n_elements, data) = parsing::keyword_header(&input[..24]).unwrap();
+        let (name, n_elements, data) =
+            parsing::keyword_header(&input[..24].try_into().unwrap()).unwrap();
         let data = parsing::keyword_data(n_elements, data, &input[24..]).unwrap();
         let kw = EclBinKeyword { name, data };
 
