@@ -29,6 +29,6 @@ pub enum EclBinaryError {
 /// Summary parsing errors
 #[derive(Error, Debug)]
 pub enum EclSummaryError {
-    #[error("Invalid length for start date data. Expected {expected:?}, found {found:?}.")]
-    InvalidStartDateLength { expected: usize, found: usize },
+    #[error("Invalid length for start date data: {0}.")]
+    InvalidStartDateLength(usize),
 }
