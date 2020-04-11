@@ -113,16 +113,13 @@ impl EclSummary {
                 ("DIMENS", EclBinData::Int(dims)) => {
                     all_values.resize(dims[0] as usize, Default::default());
                 }
-                ("STARTDAT", EclBinData::Int(data)) => match data.len() {
-                    len @ 0..=2 => {
-                        return Err(EclSummaryError::InvalidStartDateLength {
-                            expected: 3,
-                            found: len,
-                        }
-                        .into())
+                ("STARTDAT", EclBinData::Int(data)) => {
+                    if data.len() > 2 {
+                        start_date = data[..3].try_into().unwrap();
+                    } else {
+                        return Err(EclSummaryError::InvalidStartDateLength(data.len()).into());
                     }
-                    _ => start_date = data[..2].try_into().unwrap(),
-                },
+                }
                 ("KEYWORDS", EclBinData::FixStr(data)) => {
                     names = data;
                 }
