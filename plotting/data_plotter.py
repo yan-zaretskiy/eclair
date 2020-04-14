@@ -64,9 +64,11 @@ class DataPlotter(tts.HasTraits):
                             # we need to interpolate on a 1D datetime grid
                             dates = dm.dates[path]
                             x = (dates - dates[0]).astype(np.float32)
-                            trace.y = value["values"] - np.interp(x, x_ref, y_ref)
+                            trace.y = (
+                                value["values"] - np.interp(x, x_ref, y_ref)
+                            ).astype(np.float32)
                         else:
-                            trace.y = value["values"]
+                            trace.y = value["values"].astype(np.float32)
                         trace.visible = True
                     else:
                         trace.y = []

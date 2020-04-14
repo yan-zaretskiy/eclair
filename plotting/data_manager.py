@@ -3,14 +3,7 @@ import datetime
 import msgpack
 import numpy as np
 
-from traits.api import (
-    Bool,
-    cached_property,
-    HasTraits,
-    Dict,
-    Property,
-    Tuple,
-)
+from traits.api import Bool, cached_property, HasTraits, Dict, Property, Tuple
 
 
 def decode_start_date(obj):
@@ -24,7 +17,7 @@ def decode_start_date(obj):
 def ext_hook(code, data):
     """Read code-2 data as float32 numpy arrays."""
     if code == 2:
-        return np.frombuffer(data, dtype=np.float32)
+        return np.frombuffer(data, dtype=">f4")
     return msgpack.ExtType(code, data)
 
 

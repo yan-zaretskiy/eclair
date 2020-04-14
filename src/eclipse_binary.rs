@@ -20,11 +20,15 @@ pub type FixedString = ArrayString<[u8; 8]>;
 #[derive(Debug, PartialEq)]
 pub enum EclBinData {
     Int(Vec<i32>),
-    Float(Vec<f32>),
-    Double(Vec<f64>),
     Logical(Vec<i32>),
     FixStr(Vec<FixedString>),
     DynStr(usize, Vec<String>),
+
+    /// FP data is copied directly as bytes, their contents don't need to be examined
+    Float(Vec<u8>),
+    Double(Vec<u8>),
+
+    /// A tag type with no data
     Message,
 }
 
@@ -84,8 +88,8 @@ impl EclBinData {
         use EclBinData::*;
         match self {
             Int(v) | Logical(v) => v.push(BigEndian::read_i32(raw_chunk)),
-            Float(v) => v.push(BigEndian::read_f32(raw_chunk)),
-            Double(v) => v.push(BigEndian::read_f64(raw_chunk)),
+            Float(v) => v.extend_from_slice(raw_chunk),
+            Double(v) => v.extend_from_slice(raw_chunk),
             FixStr(v) => {
                 v.push(FixedString::from(str::from_utf8(raw_chunk).unwrap().trim()).unwrap())
             }
@@ -230,13 +234,13 @@ impl EclBinFile {
     }
 
     fn next_keyword(&mut self) -> ah::Result<EclBinKeyword> {
-        // Look at the next 24 bytes and try reading the header;
+        // Look at the next 24 bytes and try reading the header
         let mut header_buf = [0u8; 24];
         self.reader.read_exact(&mut header_buf)?;
 
         let (name, n_elements, data) = parsing::keyword_header(&header_buf)?;
 
-        // Compute how much bytes we need to read the data and extract it;
+        // Compute how many bytes we need to read from the data and extract it
         let need_bytes = data.bytes_for_elements(n_elements);
         let mut data_buf = vec![0; need_bytes];
         self.reader.read_exact(&mut data_buf)?;

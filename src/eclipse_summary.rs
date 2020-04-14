@@ -4,7 +4,6 @@ use std::{
 };
 
 use anyhow as ah;
-use anyhow::Context;
 use itertools::izip;
 use once_cell::sync::Lazy;
 use serde::Serialize;
@@ -106,7 +105,7 @@ impl EclSummary {
         let mut wgnames = Vec::new();
         let mut nums = Vec::new();
         let mut units = Vec::new();
-        let mut all_values: Vec<Vec<f32>> = Vec::new();
+        let mut all_values: Vec<Vec<u8>> = Vec::new();
 
         for kw in smspec {
             match (kw.name.as_str(), kw.data) {
@@ -140,8 +139,10 @@ impl EclSummary {
         for unsmry_kw in unsmry {
             match (unsmry_kw.name.as_str(), unsmry_kw.data) {
                 ("PARAMS", EclBinData::Float(params)) => {
-                    for (values, param) in izip!(&mut all_values, params) {
-                        values.push(param)
+                    for (values, param) in
+                        izip!(&mut all_values, params.chunks(std::mem::size_of::<f32>()))
+                    {
+                        values.extend_from_slice(param)
                     }
                 }
                 _ => continue,
@@ -156,14 +157,12 @@ impl EclSummary {
 
         for (name, wg, num, unit, values) in izip!(names, wgnames, nums, units, all_values) {
             let mut hm = HashMap::new();
-            let slice =
-                transmute_slice(&values).with_context(|| "Failed to transmute &[f32] as &[u8]")?;
 
             hm.insert(
                 name,
                 EclSummaryRecord {
                     unit,
-                    values: ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(slice))),
+                    values: ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(values))),
                 },
             );
 
@@ -211,16 +210,5 @@ impl EclSummary {
             }
         }
         Ok(summary)
-    }
-}
-
-fn transmute_slice(slice: &[f32]) -> ah::Result<&[u8]> {
-    unsafe {
-        let ptr = slice.as_ptr() as *const u8;
-        let len = slice
-            .len()
-            .checked_mul(std::mem::size_of::<f32>())
-            .with_context(|| "Too many bytes in a data record")?;
-        Ok(std::slice::from_raw_parts(ptr, len))
     }
 }
