@@ -7,6 +7,7 @@ use crate::eclipse_summary::EclSummary;
 use crate::errors::EclFileError;
 
 use anyhow as ah;
+use env_logger::{Builder, Env};
 use rmp_serde as rmps;
 use structopt::StructOpt;
 
@@ -26,13 +27,23 @@ struct Opt {
     /// Output file
     #[structopt(parse(from_os_str), short, long)]
     output: Option<PathBuf>,
+}
 
-    /// Prints debug info
-    #[structopt(short, long)]
-    debug: bool,
+fn init_logger() {
+    let env = Env::default()
+        .filter_or("ECLAIR_LOG_LEVEL", "info")
+        .write_style_or("ECLAIR_LOG_STYLE", "auto");
+
+    let mut builder = Builder::from_env(env);
+
+    builder.format_timestamp(None).init();
 }
 
 fn main() -> ah::Result<()> {
+    // Initialize the logger as soon as possible
+    init_logger();
+
+    // Read the CLI arguments
     let opt = Opt::from_args();
 
     let input_path = opt.input;
@@ -53,7 +64,7 @@ fn main() -> ah::Result<()> {
     let smspec = EclBinFile::new(input_path.with_extension("SMSPEC"))?;
     let unsmry = EclBinFile::new(input_path.with_extension("UNSMRY"))?;
 
-    let summary = EclSummary::new(smspec, unsmry, opt.debug)?;
+    let summary = EclSummary::new(smspec, unsmry)?;
 
     let mut out_file = File::create(
         opt.output

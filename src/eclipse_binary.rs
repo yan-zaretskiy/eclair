@@ -20,13 +20,13 @@ pub type FixedString = ArrayString<[u8; 8]>;
 #[derive(Debug, PartialEq)]
 pub enum EclBinData {
     Int(Vec<i32>),
-    Logical(Vec<i32>),
+    Boolean(Vec<i32>),
     FixStr(Vec<FixedString>),
     DynStr(usize, Vec<String>),
 
     /// FP data is copied directly as bytes, their contents don't need to be examined
-    Float(Vec<u8>),
-    Double(Vec<u8>),
+    F32Bytes(Vec<u8>),
+    F64Bytes(Vec<u8>),
 
     /// A tag type with no data
     Message,
@@ -40,9 +40,9 @@ impl EclBinData {
         use EclBinData::*;
         match &raw_dtype {
             b"INTE" => Ok(Int(Vec::new())),
-            b"REAL" => Ok(Float(Vec::new())),
-            b"DOUB" => Ok(Double(Vec::new())),
-            b"LOGI" => Ok(Logical(Vec::new())),
+            b"REAL" => Ok(F32Bytes(Vec::new())),
+            b"DOUB" => Ok(F64Bytes(Vec::new())),
+            b"LOGI" => Ok(Boolean(Vec::new())),
             b"CHAR" => Ok(FixStr(Vec::new())),
             b"MESS" => Ok(Message),
             [b'C', b'0', rest @ ..] => {
@@ -72,8 +72,8 @@ impl EclBinData {
     fn element_size(&self) -> usize {
         use EclBinData::*;
         match self {
-            Int(_) | Float(_) | Logical(_) => 4,
-            Double(_) | FixStr(_) => 8,
+            Int(_) | F32Bytes(_) | Boolean(_) => 4,
+            F64Bytes(_) | FixStr(_) => 8,
             Message => 0,
             DynStr(len, _) => *len,
         }
@@ -87,9 +87,9 @@ impl EclBinData {
     fn push(&mut self, raw_chunk: &[u8]) {
         use EclBinData::*;
         match self {
-            Int(v) | Logical(v) => v.push(BigEndian::read_i32(raw_chunk)),
-            Float(v) => v.extend_from_slice(raw_chunk),
-            Double(v) => v.extend_from_slice(raw_chunk),
+            Int(v) | Boolean(v) => v.push(BigEndian::read_i32(raw_chunk)),
+            F32Bytes(v) => v.extend_from_slice(raw_chunk),
+            F64Bytes(v) => v.extend_from_slice(raw_chunk),
             FixStr(v) => {
                 v.push(FixedString::from(str::from_utf8(raw_chunk).unwrap().trim()).unwrap())
             }

@@ -6,6 +6,7 @@ use std::{
 
 use anyhow as ah;
 use itertools::izip;
+use log::{debug, trace};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use serde_bytes;
@@ -106,6 +107,7 @@ impl EclSummary {
         loop {
             match bin.next_keyword() {
                 Ok((kw, remaining)) => {
+                    trace!("{:?}", kw);
                     bin = remaining;
                     fun(kw)?;
                 }
@@ -124,7 +126,7 @@ impl EclSummary {
         Ok(())
     }
 
-    pub fn new(smspec: EclBinFile, unsmry: EclBinFile, debug: bool) -> ah::Result<Self> {
+    pub fn new(smspec: EclBinFile, unsmry: EclBinFile) -> ah::Result<Self> {
         // 1. Parse the SMSPEC file for enough metadata to correctly place data records
         let mut start_date = [0; 3];
         let mut names = Vec::new();
@@ -157,14 +159,14 @@ impl EclSummary {
                 ("NUMS", EclBinData::Int(data)) => {
                     nums = data;
                 }
-                _ => {},
+                _ => {}
             }
             Ok(())
         })?;
 
         // 2. Read data from the UNSMRY file
         EclSummary::for_keyword_in(unsmry, |kw| {
-            if let ("PARAMS", EclBinData::Float(params)) = (kw.name.as_str(), kw.data) {
+            if let ("PARAMS", EclBinData::F32Bytes(params)) = (kw.name.as_str(), kw.data) {
                 for (values, param) in
                     izip!(&mut all_values, params.chunks(std::mem::size_of::<f32>()))
                 {
@@ -174,7 +176,7 @@ impl EclSummary {
             Ok(())
         })?;
 
-        // 3. Now we have all the data read, let's put it in where it belongs
+        // 3. Now we have all the data read, let's put it where it belongs
         let mut summary = EclSummary {
             start_date,
             ..Default::default()
@@ -223,12 +225,10 @@ impl EclSummary {
                         summary.blocks.entry(num).or_default().extend(hm);
                     }
                     _ => {
-                        if debug {
-                            println!(
-                                "Unknown vector. KEYWORD: {}, WGNAME: {}, NUM: {}",
-                                name, wg, num
-                            );
-                        }
+                        debug!(
+                            "Skipped summary data. KEYWORD: {}, WGNAME: {}, NUM: {}",
+                            name, wg, num
+                        );
                         continue;
                     }
                 }
