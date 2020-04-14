@@ -36,9 +36,9 @@ impl EclBinData {
     const NUM_BLOCK_SIZE: usize = 1000;
     const STR_BLOCK_SIZE: usize = 105;
 
-    fn new(raw_dtype: &[u8; 4]) -> ah::Result<Self> {
+    fn new(raw_dtype: [u8; 4]) -> ah::Result<Self> {
         use EclBinData::*;
-        match raw_dtype {
+        match &raw_dtype {
             b"INTE" => Ok(Int(Vec::new())),
             b"REAL" => Ok(Float(Vec::new())),
             b"DOUB" => Ok(Double(Vec::new())),
@@ -55,7 +55,7 @@ impl EclBinData {
                 Ok(DynStr(len, Vec::new()))
             }
             _ => Err(EclBinaryError::InvalidDataType(
-                String::from_utf8_lossy(raw_dtype).to_string(),
+                String::from_utf8_lossy(&raw_dtype).to_string(),
             )
             .into()),
         }
@@ -233,7 +233,7 @@ impl EclBinFile {
         })
     }
 
-    fn next_keyword(&mut self) -> ah::Result<EclBinKeyword> {
+    pub fn next_keyword(mut self) -> ah::Result<(EclBinKeyword, Self)> {
         // Look at the next 24 bytes and try reading the header
         let mut header_buf = [0u8; 24];
         self.reader.read_exact(&mut header_buf)?;
@@ -247,23 +247,7 @@ impl EclBinFile {
 
         let data = parsing::keyword_data(n_elements, data, &data_buf)?;
 
-        Ok(EclBinKeyword { name, data })
-    }
-}
-
-impl Iterator for EclBinFile {
-    type Item = EclBinKeyword;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.next_keyword() {
-            Ok(kw) => Some(kw),
-            Err(e) => {
-                if e.is::<EclBinaryError>() {
-                    println!("{:?}", e);
-                }
-                None
-            }
-        }
+        Ok((EclBinKeyword { name, data }, self))
     }
 }
 

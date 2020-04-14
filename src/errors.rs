@@ -31,4 +31,10 @@ pub enum EclBinaryError {
 pub enum EclSummaryError {
     #[error("Invalid length for start date data: {0}.")]
     InvalidStartDateLength(usize),
+
+    #[error("Error parsing the SMSPEC file: {0}.")]
+    SmspecParsing(EclBinaryError),
+
+    #[error("Error parsing the UNSMRY file: {0}.")]
+    UnsmryParsing(EclBinaryError),
 }

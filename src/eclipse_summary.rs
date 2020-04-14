@@ -10,7 +10,7 @@ use serde::Serialize;
 use serde_bytes;
 
 use crate::eclipse_binary::{EclBinData, EclBinFile, FixedString};
-use crate::errors::EclSummaryError;
+use crate::errors::{EclBinaryError, EclSummaryError};
 
 static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     let mut s = HashSet::new();
@@ -98,7 +98,7 @@ pub struct EclSummary {
 }
 
 impl EclSummary {
-    pub fn new(smspec: EclBinFile, unsmry: EclBinFile, debug: bool) -> ah::Result<Self> {
+    pub fn new(mut smspec: EclBinFile, mut unsmry: EclBinFile, debug: bool) -> ah::Result<Self> {
         // 1. Parse the SMSPEC file for enough metadata to correctly place data records
         let mut start_date = [0; 3];
         let mut names = Vec::new();
@@ -107,45 +107,68 @@ impl EclSummary {
         let mut units = Vec::new();
         let mut all_values: Vec<Vec<u8>> = Vec::new();
 
-        for kw in smspec {
-            match (kw.name.as_str(), kw.data) {
-                ("DIMENS", EclBinData::Int(dims)) => {
-                    all_values.resize(dims[0] as usize, Default::default());
-                }
-                ("STARTDAT", EclBinData::Int(data)) => {
-                    if data.len() > 2 {
-                        start_date = data[..3].try_into().unwrap();
-                    } else {
-                        return Err(EclSummaryError::InvalidStartDateLength(data.len()).into());
+        loop {
+            match smspec.next_keyword() {
+                Ok((smspec_kw, remaining_smspec)) => {
+                    smspec = remaining_smspec;
+                    match (smspec_kw.name.as_str(), smspec_kw.data) {
+                        ("DIMENS", EclBinData::Int(dims)) => {
+                            all_values.resize(dims[0] as usize, Default::default());
+                        }
+                        ("STARTDAT", EclBinData::Int(data)) => {
+                            if data.len() > 2 {
+                                start_date = data[..3].try_into().unwrap();
+                            } else {
+                                return Err(
+                                    EclSummaryError::InvalidStartDateLength(data.len()).into()
+                                );
+                            }
+                        }
+                        ("KEYWORDS", EclBinData::FixStr(data)) => {
+                            names = data;
+                        }
+                        ("UNITS", EclBinData::FixStr(data)) => {
+                            units = data;
+                        }
+                        ("WGNAMES", EclBinData::FixStr(data)) => {
+                            wgnames = data;
+                        }
+                        ("NUMS", EclBinData::Int(data)) => {
+                            nums = data;
+                        }
+                        _ => continue,
                     }
                 }
-                ("KEYWORDS", EclBinData::FixStr(data)) => {
-                    names = data;
+                Err(e) => {
+                    if e.is::<EclBinaryError>() {
+                        return Err(e);
+                    }
+                    break;
                 }
-                ("UNITS", EclBinData::FixStr(data)) => {
-                    units = data;
-                }
-                ("WGNAMES", EclBinData::FixStr(data)) => {
-                    wgnames = data;
-                }
-                ("NUMS", EclBinData::Int(data)) => {
-                    nums = data;
-                }
-                _ => continue,
             }
         }
 
         // 2. Read data from the UNSMRY file
-        for unsmry_kw in unsmry {
-            match (unsmry_kw.name.as_str(), unsmry_kw.data) {
-                ("PARAMS", EclBinData::Float(params)) => {
-                    for (values, param) in
-                        izip!(&mut all_values, params.chunks(std::mem::size_of::<f32>()))
+        loop {
+            match unsmry.next_keyword() {
+                Ok((unsmry_kw, remaining_unsmry)) => {
+                    unsmry = remaining_unsmry;
+                    if let ("PARAMS", EclBinData::Float(params)) =
+                        (unsmry_kw.name.as_str(), unsmry_kw.data)
                     {
-                        values.extend_from_slice(param)
+                        for (values, param) in
+                            izip!(&mut all_values, params.chunks(std::mem::size_of::<f32>()))
+                        {
+                            values.extend_from_slice(param)
+                        }
                     }
                 }
-                _ => continue,
+                Err(e) => {
+                    if e.is::<EclBinaryError>() {
+                        return Err(e);
+                    }
+                    break;
+                }
             }
         }
 
