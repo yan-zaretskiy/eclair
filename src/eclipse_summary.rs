@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 use serde_bytes;
 
-use crate::eclipse_binary::{EclBinData, EclBinFile, FixedString};
+use crate::eclipse_binary::{EclBinData, EclBinFile, EclBinKeyword, FixedString};
 use crate::errors::{EclBinaryError, EclSummaryError};
 
 static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
@@ -98,7 +98,28 @@ pub struct EclSummary {
 }
 
 impl EclSummary {
-    pub fn new(mut smspec: EclBinFile, mut unsmry: EclBinFile, debug: bool) -> ah::Result<Self> {
+    fn for_keyword_in<F>(mut bin: EclBinFile, mut fun: F) -> ah::Result<()>
+    where
+        F: FnMut(EclBinKeyword) -> ah::Result<()>,
+    {
+        loop {
+            match bin.next_keyword() {
+                Ok((kw, remaining)) => {
+                    bin = remaining;
+                    fun(kw)?;
+                }
+                Err(e) => {
+                    if e.is::<EclBinaryError>() {
+                        return Err(e);
+                    }
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn new(smspec: EclBinFile, unsmry: EclBinFile, debug: bool) -> ah::Result<Self> {
         // 1. Parse the SMSPEC file for enough metadata to correctly place data records
         let mut start_date = [0; 3];
         let mut names = Vec::new();
@@ -107,70 +128,46 @@ impl EclSummary {
         let mut units = Vec::new();
         let mut all_values: Vec<Vec<u8>> = Vec::new();
 
-        loop {
-            match smspec.next_keyword() {
-                Ok((smspec_kw, remaining_smspec)) => {
-                    smspec = remaining_smspec;
-                    match (smspec_kw.name.as_str(), smspec_kw.data) {
-                        ("DIMENS", EclBinData::Int(dims)) => {
-                            all_values.resize(dims[0] as usize, Default::default());
-                        }
-                        ("STARTDAT", EclBinData::Int(data)) => {
-                            if data.len() > 2 {
-                                start_date = data[..3].try_into().unwrap();
-                            } else {
-                                return Err(
-                                    EclSummaryError::InvalidStartDateLength(data.len()).into()
-                                );
-                            }
-                        }
-                        ("KEYWORDS", EclBinData::FixStr(data)) => {
-                            names = data;
-                        }
-                        ("UNITS", EclBinData::FixStr(data)) => {
-                            units = data;
-                        }
-                        ("WGNAMES", EclBinData::FixStr(data)) => {
-                            wgnames = data;
-                        }
-                        ("NUMS", EclBinData::Int(data)) => {
-                            nums = data;
-                        }
-                        _ => continue,
+        EclSummary::for_keyword_in(smspec, |kw| {
+            match (kw.name.as_str(), kw.data) {
+                ("DIMENS", EclBinData::Int(dims)) => {
+                    all_values.resize(dims[0] as usize, Default::default());
+                }
+                ("STARTDAT", EclBinData::Int(data)) => {
+                    if data.len() > 2 {
+                        start_date = data[..3].try_into().unwrap();
+                    } else {
+                        return Err(EclSummaryError::InvalidStartDateLength(data.len()).into());
                     }
                 }
-                Err(e) => {
-                    if e.is::<EclBinaryError>() {
-                        return Err(e);
-                    }
-                    break;
+                ("KEYWORDS", EclBinData::FixStr(data)) => {
+                    names = data;
                 }
+                ("UNITS", EclBinData::FixStr(data)) => {
+                    units = data;
+                }
+                ("WGNAMES", EclBinData::FixStr(data)) => {
+                    wgnames = data;
+                }
+                ("NUMS", EclBinData::Int(data)) => {
+                    nums = data;
+                }
+                _ => (),
             }
-        }
+            Ok(())
+        })?;
 
         // 2. Read data from the UNSMRY file
-        loop {
-            match unsmry.next_keyword() {
-                Ok((unsmry_kw, remaining_unsmry)) => {
-                    unsmry = remaining_unsmry;
-                    if let ("PARAMS", EclBinData::Float(params)) =
-                        (unsmry_kw.name.as_str(), unsmry_kw.data)
-                    {
-                        for (values, param) in
-                            izip!(&mut all_values, params.chunks(std::mem::size_of::<f32>()))
-                        {
-                            values.extend_from_slice(param)
-                        }
-                    }
-                }
-                Err(e) => {
-                    if e.is::<EclBinaryError>() {
-                        return Err(e);
-                    }
-                    break;
+        EclSummary::for_keyword_in(unsmry, |kw| {
+            if let ("PARAMS", EclBinData::Float(params)) = (kw.name.as_str(), kw.data) {
+                for (values, param) in
+                    izip!(&mut all_values, params.chunks(std::mem::size_of::<f32>()))
+                {
+                    values.extend_from_slice(param)
                 }
             }
-        }
+            Ok(())
+        })?;
 
         // 3. Now we have all the data read, let's put it in where it belongs
         let mut summary = EclSummary {
