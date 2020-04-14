@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     convert::TryInto,
+    io,
 };
 
 use anyhow as ah;
@@ -10,7 +11,7 @@ use serde::Serialize;
 use serde_bytes;
 
 use crate::eclipse_binary::{EclBinData, EclBinFile, EclBinKeyword, FixedString};
-use crate::errors::{EclBinaryError, EclSummaryError};
+use crate::errors::EclSummaryError;
 
 static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     let mut s = HashSet::new();
@@ -108,11 +109,15 @@ impl EclSummary {
                     bin = remaining;
                     fun(kw)?;
                 }
+                // we break from the loop when we encounter the EOF,
                 Err(e) => {
-                    if e.is::<EclBinaryError>() {
-                        return Err(e);
+                    let is_eof = e
+                        .downcast_ref::<io::Error>()
+                        .map(|e| e.kind() == io::ErrorKind::UnexpectedEof);
+                    if let Some(true) = is_eof {
+                        break;
                     }
-                    break;
+                    return Err(e);
                 }
             }
         }
@@ -152,7 +157,7 @@ impl EclSummary {
                 ("NUMS", EclBinData::Int(data)) => {
                     nums = data;
                 }
-                _ => (),
+                _ => {},
             }
             Ok(())
         })?;
