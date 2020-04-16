@@ -1,4 +1,4 @@
-use crate::eclipse_binary::{for_keyword_in, BinFile, BinRecord, FixedString};
+use crate::eclipse_binary::{for_keyword_in, BinFile, BinRecord, FlexString};
 use crate::errors::SummaryError;
 
 use anyhow as ah;
@@ -36,8 +36,6 @@ static PERFORMANCE_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     s
 });
 
-static WEIRD_STRING: Lazy<FixedString> = Lazy::new(|| FixedString::from(":+:+:+:+").unwrap());
-
 /// Units system used for a simulation run
 #[derive(Debug)]
 enum UnitSystem {
@@ -50,11 +48,30 @@ enum UnitSystem {
 /// Represents metadata we collect for each time series.
 #[derive(Debug, Default)]
 struct SmspecItem {
-    kw_name: FixedString,
-    wg_name: FixedString,
-    wg_long_name: String,
+    kw_name: FlexString,
+    wg_short_name: FlexString,
+    wg_long_name: FlexString,
     num: i32,
-    unit: FixedString,
+    unit: FlexString,
+}
+
+impl SmspecItem {
+    pub fn is_num_valid(&self) -> bool {
+        self.num > 0
+    }
+
+    pub fn is_wg_valid(&self) -> bool {
+        (self.wg_short_name.len() > 0 && &self.wg_short_name[..] != ":+:+:+:+")
+            || (self.wg_long_name.len() > 0 && &self.wg_long_name[..] != ":+:+:+:+")
+    }
+
+    pub fn wg_name(&mut self) -> &mut FlexString {
+        if self.wg_short_name.len() > 0 {
+            &mut self.wg_short_name
+        } else {
+            &mut self.wg_long_name
+        }
+    }
 }
 
 /// Contents of an SMSPEC file. Note that we don't extract everything, only those bits that
@@ -109,19 +126,19 @@ impl Smspec {
                 ("KEYWORDS", BinRecord::FixStr(keywords)) => {
                     log::trace!(target: "Parsing SMSPEC", "KEYWORDS: {:?}", keywords);
                     for (item, kw_name) in smspec.items.iter_mut().zip(keywords) {
-                        item.kw_name = *kw_name;
+                        item.kw_name = kw_name.drain().collect();
                     }
                 }
                 ("WGNAMES", BinRecord::FixStr(wgnames)) => {
                     log::trace!(target: "Parsing SMSPEC", "WGNAMES: {:?}", wgnames);
                     for (item, wg_name) in smspec.items.iter_mut().zip(wgnames) {
-                        item.wg_name = *wg_name;
+                        item.wg_short_name = wg_name.drain().collect();
                     }
                 }
                 ("NAMES", BinRecord::DynStr(_, names)) => {
                     log::trace!(target: "Parsing SMSPEC", "NAMES: {:?}", names);
                     for (item, long_name) in smspec.items.iter_mut().zip(names) {
-                        item.wg_long_name = long_name.drain(..).collect();
+                        item.wg_long_name = long_name.drain().collect();
                     }
                 }
                 ("NUMS", BinRecord::Int(nums)) => {
@@ -133,7 +150,7 @@ impl Smspec {
                 ("UNITS", BinRecord::FixStr(units)) => {
                     log::trace!(target: "Parsing SMSPEC", "UNITS: {:?}", units);
                     for (item, unit) in smspec.items.iter_mut().zip(units) {
-                        item.unit = *unit;
+                        item.unit = unit.drain().collect();
                     }
                 }
                 _ => {
@@ -184,7 +201,7 @@ struct ExtVec((i8, serde_bytes::ByteBuf));
 #[derive(Debug, Default, Serialize)]
 struct SummaryRecord {
     /// Physical units for the values
-    unit: FixedString,
+    unit: FlexString,
 
     /// Actual data
     values: ExtVec,
@@ -196,44 +213,44 @@ pub struct Summary {
     start_date: [i32; 6],
 
     /// Time data, should always be present
-    time: HashMap<FixedString, SummaryRecord>,
+    time: HashMap<FlexString, SummaryRecord>,
 
     /// Performance data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    performance: HashMap<FixedString, SummaryRecord>,
+    performance: HashMap<FlexString, SummaryRecord>,
 
     /// Field data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    field: HashMap<FixedString, SummaryRecord>,
+    field: HashMap<FlexString, SummaryRecord>,
 
     /// Region data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    regions: HashMap<i32, HashMap<FixedString, SummaryRecord>>,
+    regions: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
 
     /// Aquifer data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    aquifers: HashMap<i32, HashMap<FixedString, SummaryRecord>>,
+    aquifers: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
 
     /// Well data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    wells: HashMap<FixedString, HashMap<FixedString, SummaryRecord>>,
+    wells: HashMap<FlexString, HashMap<FlexString, SummaryRecord>>,
 
     /// Well completion data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    completions: HashMap<(FixedString, i32), HashMap<FixedString, SummaryRecord>>,
+    completions: HashMap<(FlexString, i32), HashMap<FlexString, SummaryRecord>>,
 
     /// Group data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    groups: HashMap<FixedString, HashMap<FixedString, SummaryRecord>>,
+    groups: HashMap<FlexString, HashMap<FlexString, SummaryRecord>>,
 
     /// Cell data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    blocks: HashMap<i32, HashMap<FixedString, SummaryRecord>>,
+    blocks: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
 }
 
 impl Summary {
     pub fn new(smspec_file: BinFile, unsmry_file: BinFile) -> ah::Result<Self> {
-        let smspec = Smspec::new(smspec_file)?;
+        let mut smspec = Smspec::new(smspec_file)?;
         let unsmry = Unsmry::new(unsmry_file, smspec.nlist)?;
 
         // We read all the data, now we place it in appropriate hash maps.
@@ -242,14 +259,15 @@ impl Summary {
             ..Default::default()
         };
 
-        for (item, values) in smspec.items.iter().zip(unsmry.0) {
-            let mut hm = HashMap::new();
+        for (item, values) in smspec.items.iter_mut().zip(unsmry.0) {
+            let values = ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(values)));
 
+            let mut hm = HashMap::new();
             hm.insert(
-                item.kw_name,
+                item.kw_name.drain().collect(),
                 SummaryRecord {
-                    unit: item.unit,
-                    values: ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(values))),
+                    unit: item.unit.drain().collect(),
+                    values,
                 },
             );
 
@@ -259,39 +277,47 @@ impl Summary {
             } else if PERFORMANCE_KEYWORDS.contains(name) {
                 summary.performance.extend(hm);
             } else {
-                let wg_is_valid = item.wg_name.len() > 0 && item.wg_name != *WEIRD_STRING;
-                let num_is_valid = item.num > 0;
+                let num_valid = item.is_num_valid();
+                let wg_valid = item.is_wg_valid();
 
                 match &name[0..1] {
                     "F" => {
                         summary.field.extend(hm);
                     }
-                    "R" if num_is_valid => {
+                    "R" if num_valid => {
                         summary.regions.entry(item.num).or_default().extend(hm);
                     }
-                    "A" if num_is_valid => {
+                    "A" if num_valid => {
                         summary.aquifers.entry(item.num).or_default().extend(hm);
                     }
-                    "W" if wg_is_valid => {
-                        summary.wells.entry(item.wg_name).or_default().extend(hm);
-                    }
-                    "C" if wg_is_valid && num_is_valid => {
+                    "W" if wg_valid => {
                         summary
-                            .completions
-                            .entry((item.wg_name, item.num))
+                            .wells
+                            .entry(item.wg_name().drain().collect())
                             .or_default()
                             .extend(hm);
                     }
-                    "G" if wg_is_valid => {
-                        summary.groups.entry(item.wg_name).or_default().extend(hm);
+                    "C" if wg_valid && num_valid => {
+                        summary
+                            .completions
+                            .entry((item.wg_name().drain().collect(), item.num))
+                            .or_default()
+                            .extend(hm);
                     }
-                    "B" if num_is_valid => {
+                    "G" if wg_valid => {
+                        summary
+                            .groups
+                            .entry(item.wg_name().drain().collect())
+                            .or_default()
+                            .extend(hm);
+                    }
+                    "B" if num_valid => {
                         summary.blocks.entry(item.num).or_default().extend(hm);
                     }
                     _ => {
                         log::debug!(target: "Building Summary",
                             "Skipped a summary item. KEYWORD: {}, WGNAME: {}, NUM: {}",
-                            name, item.wg_name, item.num
+                            name, item.wg_short_name, item.num
                         );
                         continue;
                     }

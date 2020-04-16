@@ -2,8 +2,8 @@ use crate::errors::BinaryError;
 
 use anyhow as ah;
 use anyhow::Context;
-use arrayvec::ArrayString;
 use byteorder::{BigEndian, ByteOrder};
+use smallstr::SmallString;
 
 use std::{
     cmp::min,
@@ -15,15 +15,15 @@ use std::{
     str,
 };
 
-pub type FixedString = ArrayString<[u8; 8]>;
+pub type FlexString = SmallString<[u8; 8]>;
 
 /// Represents a body of data in a binary record in an Eclipse file
 #[derive(Debug, PartialEq)]
 pub enum BinRecord {
     Int(Vec<i32>),
     Boolean(Vec<i32>),
-    FixStr(Vec<FixedString>),
-    DynStr(usize, Vec<String>),
+    FixStr(Vec<FlexString>),
+    DynStr(usize, Vec<FlexString>),
 
     /// FP data is copied directly as bytes, their contents don't need to be examined
     F32Bytes(Vec<u8>),
@@ -94,10 +94,8 @@ impl BinRecord {
             Int(v) | Boolean(v) => v.push(BigEndian::read_i32(raw_chunk)),
             F32Bytes(v) => v.extend_from_slice(raw_chunk),
             F64Bytes(v) => v.extend_from_slice(raw_chunk),
-            FixStr(v) => {
-                v.push(FixedString::from(str::from_utf8(raw_chunk).unwrap().trim()).unwrap())
-            }
-            DynStr(_, v) => v.push(String::from(str::from_utf8(raw_chunk).unwrap())),
+            FixStr(v) => v.push(FlexString::from(str::from_utf8(raw_chunk).unwrap().trim())),
+            DynStr(_, v) => v.push(FlexString::from(str::from_utf8(raw_chunk).unwrap().trim())),
             Message => {}
         }
     }
@@ -159,19 +157,18 @@ mod parsing {
         Ok((data, input))
     }
 
-    pub(super) fn keyword_header(input: &[u8; 24]) -> ah::Result<(FixedString, usize, BinRecord)> {
+    pub(super) fn keyword_header(input: &[u8; 24]) -> ah::Result<(FlexString, usize, BinRecord)> {
         // header record, must be 16 bytes long in total
         let (header, _) =
             single_record_with_size(16, input).with_context(|| "Failed to read a data header.")?;
 
         // 8-character string for a keyword name
         let (name, header) = take(8, header).with_context(|| "Failed to read a keyword name.")?;
-        let name = FixedString::from(
+        let name = FlexString::from(
             str::from_utf8(name)
                 .with_context(|| "Failed to parse a keyword name as an 8-char string.")?
                 .trim(),
-        )
-        .unwrap(); // this unwrap is fine, because we pass exactly 8 characters
+        );
 
         // 4-byte integer for a number of elements in an array
         let (n_elements, header) = take_i32(header)
@@ -219,7 +216,7 @@ mod parsing {
 /// A single binary keyword.
 #[derive(Debug, PartialEq)]
 pub struct BinKeyword {
-    pub name: FixedString,
+    pub name: FlexString,
     pub data: BinRecord,
 }
 
@@ -307,14 +304,14 @@ mod tests {
         let data = parsing::keyword_data(n_elements, data, &input[24..]).unwrap();
         let kw = BinKeyword { name, data };
 
-        assert_eq!(kw.name, FixedString::from("KEYWORDS").unwrap());
+        assert_eq!(kw.name, FlexString::from("KEYWORDS"));
 
         assert_eq!(
             kw.data,
             BinRecord::FixStr(
                 vec!["FOPR", "FGPR", "FWPR", "WOPR", "WGPR"]
                     .iter()
-                    .map(|&s| FixedString::from(s).unwrap())
+                    .map(|&s| FlexString::from(s))
                     .collect()
             )
         );
