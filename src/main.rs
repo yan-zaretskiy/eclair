@@ -2,9 +2,9 @@ mod eclipse_binary;
 mod eclipse_summary;
 mod errors;
 
-use crate::eclipse_binary::EclBinFile;
-use crate::eclipse_summary::EclSummary;
-use crate::errors::EclFileError;
+use crate::eclipse_binary::BinFile;
+use crate::eclipse_summary::Summary;
+use crate::errors::FileError;
 
 use anyhow as ah;
 use env_logger::{Builder, Env};
@@ -50,21 +50,21 @@ fn main() -> ah::Result<()> {
 
     // If there is no stem, bail early
     if input_path.file_stem().is_none() {
-        return Err(EclFileError::InvalidFilePath.into());
+        return Err(FileError::InvalidFilePath.into());
     }
 
     // we allow either extension or no extension at all
     if let Some(ext) = input_path.extension() {
         let ext = ext.to_str();
         if ext != Some("SMSPEC") && ext != Some("UNSMRY") {
-            return Err(EclFileError::InvalidFileExt.into());
+            return Err(FileError::InvalidFileExt.into());
         }
     }
 
-    let smspec = EclBinFile::new(input_path.with_extension("SMSPEC"))?;
-    let unsmry = EclBinFile::new(input_path.with_extension("UNSMRY"))?;
+    let smspec = BinFile::new(input_path.with_extension("SMSPEC"))?;
+    let unsmry = BinFile::new(input_path.with_extension("UNSMRY"))?;
 
-    let summary = EclSummary::new(smspec, unsmry)?;
+    let summary = Summary::new(smspec, unsmry)?;
 
     let mut out_file = File::create(
         opt.output

@@ -8,8 +8,9 @@ from traits.api import Bool, cached_property, HasTraits, Dict, Property, Tuple
 
 def decode_start_date(obj):
     if "start_date" in obj:
+        dt = obj["start_date"]
         obj["start_date"] = np.datetime64(
-            datetime.datetime(*reversed(obj["start_date"]))
+            datetime.datetime(*dt[2::-1], hour=dt[3], minute=dt[4], microsecond=dt[5])
         )
     return obj
 

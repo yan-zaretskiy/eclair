@@ -2,7 +2,7 @@ use thiserror::Error;
 
 /// File reading/writing errors
 #[derive(Error, Debug)]
-pub enum EclFileError {
+pub enum FileError {
     #[error("Invalid file path")]
     InvalidFilePath,
 
@@ -12,7 +12,7 @@ pub enum EclFileError {
 
 /// Binary parsing errors
 #[derive(Error, Debug)]
-pub enum EclBinaryError {
+pub enum BinaryError {
     #[error("Not enough bytes in the input. Expected {expected:?}, found {found:?}.")]
     NotEnoughBytes { expected: usize, found: usize },
 
@@ -22,19 +22,19 @@ pub enum EclBinaryError {
     #[error("Invalid data type value: {0}")]
     InvalidDataType(String),
 
+    #[error("Invalid length for a dynamic string data type: {0}")]
+    InvalidStringLength(String),
+
     #[error("Record size mismatch. Expected {expected:?}, found {found:?}.")]
     RecordSizeMismatch { expected: usize, found: usize },
 }
 
 /// Summary parsing errors
 #[derive(Error, Debug)]
-pub enum EclSummaryError {
+pub enum SummaryError {
     #[error("Invalid length for start date data: {0}.")]
     InvalidStartDateLength(usize),
 
-    #[error("Error parsing the SMSPEC file: {0}.")]
-    SmspecParsing(EclBinaryError),
-
-    #[error("Error parsing the UNSMRY file: {0}.")]
-    UnsmryParsing(EclBinaryError),
+    #[error("Invalid integer id for the unit system: {0}.")]
+    InvalidUnitSystemId(i32),
 }
