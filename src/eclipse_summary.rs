@@ -77,7 +77,7 @@ impl Smspec {
 
         // Parse the SMSPEC file for enough metadata to correctly place data records
         for_keyword_in(smspec_file, |kw| {
-            match (kw.name.as_str(), kw.data) {
+            match (kw.name.as_str(), &mut kw.data) {
                 ("INTEHEAD", BinRecord::Int(header)) => {
                     smspec.units_system = match header[0] {
                         1 => Some(UnitSystem::Metric),
@@ -104,30 +104,32 @@ impl Smspec {
                 }
                 ("KEYWORDS", BinRecord::FixStr(data)) => {
                     for (item, kw_name) in smspec.items.iter_mut().zip(data) {
-                        item.kw_name = kw_name;
+                        item.kw_name = *kw_name;
                     }
                 }
                 ("WGNAMES", BinRecord::FixStr(data)) => {
                     for (item, wg_name) in smspec.items.iter_mut().zip(data) {
-                        item.wg_name = wg_name;
+                        item.wg_name = *wg_name;
                     }
                 }
                 ("NAMES", BinRecord::DynStr(_, data)) => {
                     for (item, wg_long_name) in smspec.items.iter_mut().zip(data) {
-                        item.wg_long_name = wg_long_name;
+                        item.wg_long_name = wg_long_name.drain(..).collect();
                     }
                 }
                 ("NUMS", BinRecord::Int(data)) => {
                     for (item, num) in smspec.items.iter_mut().zip(data) {
-                        item.num = num;
+                        item.num = *num;
                     }
                 }
                 ("UNITS", BinRecord::FixStr(data)) => {
                     for (item, unit) in smspec.items.iter_mut().zip(data) {
-                        item.unit = unit;
+                        item.unit = *unit;
                     }
                 }
-                _ => {}
+                _ => {
+                    debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword: {:?}", kw);
+                }
             }
             Ok(())
         })?;
@@ -145,7 +147,7 @@ impl Unsmry {
 
         // Read data from the UNSMRY file
         for_keyword_in(unsmry_file, |kw| {
-            if let ("PARAMS", BinRecord::F32Bytes(params)) = (kw.name.as_str(), kw.data) {
+            if let ("PARAMS", BinRecord::F32Bytes(params)) = (kw.name.as_str(), &kw.data) {
                 for (values, param) in unsmry
                     .0
                     .iter_mut()
@@ -221,70 +223,62 @@ impl Summary {
         let smspec = Smspec::new(smspec_file)?;
         let unsmry = Unsmry::new(unsmry_file, smspec.nlist)?;
 
-        // We have all the data read in, now we can put it where it belongs
+        // We read all the data, now we place it in appropriate hash maps.
         let mut summary = Summary {
             start_date: smspec.start_date,
             ..Default::default()
         };
 
-        for (metadata, values) in smspec.items.iter().zip(unsmry.0) {
+        for (item, values) in smspec.items.iter().zip(unsmry.0) {
             let mut hm = HashMap::new();
 
             hm.insert(
-                metadata.kw_name,
+                item.kw_name,
                 SummaryRecord {
-                    unit: metadata.unit,
+                    unit: item.unit,
                     values: ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(values))),
                 },
             );
 
-            let name = metadata.kw_name.as_str();
+            let name = item.kw_name.as_str();
             if TIMING_KEYWORDS.contains(name) {
                 summary.time.extend(hm);
             } else if PERFORMANCE_KEYWORDS.contains(name) {
                 summary.performance.extend(hm);
             } else {
-                let is_wg_valid = metadata.wg_name.len() > 0 && metadata.wg_name != *WEIRD_STRING;
-                let is_num_valid = metadata.num > 0;
+                let wg_is_valid = item.wg_name.len() > 0 && item.wg_name != *WEIRD_STRING;
+                let num_is_valid = item.num > 0;
 
                 match &name[0..1] {
                     "F" => {
                         summary.field.extend(hm);
                     }
-                    "R" if is_num_valid => {
-                        summary.regions.entry(metadata.num).or_default().extend(hm);
+                    "R" if num_is_valid => {
+                        summary.regions.entry(item.num).or_default().extend(hm);
                     }
-                    "A" if is_num_valid => {
-                        summary.aquifers.entry(metadata.num).or_default().extend(hm);
+                    "A" if num_is_valid => {
+                        summary.aquifers.entry(item.num).or_default().extend(hm);
                     }
-                    "W" if is_wg_valid => {
-                        summary
-                            .wells
-                            .entry(metadata.wg_name)
-                            .or_default()
-                            .extend(hm);
+                    "W" if wg_is_valid => {
+                        summary.wells.entry(item.wg_name).or_default().extend(hm);
                     }
-                    "C" if is_wg_valid && is_num_valid => {
+                    "C" if wg_is_valid && num_is_valid => {
                         summary
                             .completions
-                            .entry((metadata.wg_name, metadata.num))
+                            .entry((item.wg_name, item.num))
                             .or_default()
                             .extend(hm);
                     }
-                    "G" if is_wg_valid => {
-                        summary
-                            .groups
-                            .entry(metadata.wg_name)
-                            .or_default()
-                            .extend(hm);
+                    "G" if wg_is_valid => {
+                        summary.groups.entry(item.wg_name).or_default().extend(hm);
                     }
-                    "B" if is_num_valid => {
-                        summary.blocks.entry(metadata.num).or_default().extend(hm);
+                    "B" if num_is_valid => {
+                        summary.blocks.entry(item.num).or_default().extend(hm);
                     }
                     _ => {
-                        debug!(
-                            "Skipped summary data. KEYWORD: {}, WGNAME: {}, NUM: {}",
-                            name, metadata.wg_name, metadata.num
+                        debug!(target: "Building Summary",
+                            "Skipped a summary item. KEYWORD: {}, WGNAME: {}, NUM: {}",
+                            name, item.wg_name, item.num
                         );
                         continue;
                     }

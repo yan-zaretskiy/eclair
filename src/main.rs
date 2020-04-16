@@ -11,7 +11,7 @@ use env_logger::{Builder, Env};
 use rmp_serde as rmps;
 use structopt::StructOpt;
 
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, io::Write, path::PathBuf};
 
 #[derive(StructOpt)]
 #[structopt(
@@ -35,8 +35,17 @@ fn init_logger() {
         .write_style_or("ECLAIR_LOG_STYLE", "auto");
 
     let mut builder = Builder::from_env(env);
-
-    builder.format_timestamp(None).init();
+    builder
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "[{} - {}] {}",
+                record.level(),
+                record.target(),
+                record.args()
+            )
+        })
+        .init();
 }
 
 fn main() -> ah::Result<()> {

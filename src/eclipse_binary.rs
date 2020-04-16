@@ -4,7 +4,6 @@ use anyhow as ah;
 use anyhow::Context;
 use arrayvec::ArrayString;
 use byteorder::{BigEndian, ByteOrder};
-use log::trace;
 
 use std::{
     cmp::min,
@@ -259,14 +258,13 @@ impl BinFile {
 /// A helper function for processing keywords in a binary file.
 pub fn for_keyword_in<F>(mut bin: BinFile, mut fun: F) -> ah::Result<()>
 where
-    F: FnMut(BinKeyword) -> ah::Result<()>,
+    F: FnMut(&mut BinKeyword) -> ah::Result<()>,
 {
     loop {
         match bin.next_keyword() {
-            Ok((kw, remaining)) => {
-                trace!("{:?}", kw);
+            Ok((mut kw, remaining)) => {
                 bin = remaining;
-                fun(kw)?;
+                fun(&mut kw)?;
             }
             // we break from the loop when we encounter the EOF,
             Err(e) => {
