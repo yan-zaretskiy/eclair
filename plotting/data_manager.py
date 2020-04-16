@@ -38,7 +38,7 @@ def load_summary(path):
 
 def get_dates(summary):
     """Extract a list of dates from a summary."""
-    return summary["start_date"] + (summary["time"]["TIME"]["values"] * 84600).astype(
+    return summary["start_date"] + (summary["time"]["TIME"]["values"] * 86400).astype(
         "timedelta64[s]"
     )
 

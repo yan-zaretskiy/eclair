@@ -2,7 +2,7 @@ use crate::eclipse_binary::{for_keyword_in, BinFile, BinRecord, FixedString};
 use crate::errors::SummaryError;
 
 use anyhow as ah;
-use log::debug;
+use log;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use serde_bytes;
@@ -88,47 +88,60 @@ impl Smspec {
                     };
                     smspec.simulator_id = Some(header[1]);
                 }
-                ("DIMENS", BinRecord::Int(dims)) => {
-                    smspec.nlist = dims[0];
-                    smspec.items.resize_with(dims[0] as usize, Default::default);
-                    smspec.dims.copy_from_slice(&dims[1..4]);
+                ("DIMENS", BinRecord::Int(dimens)) => {
+                    log::trace!(target: "Parsing SMSPEC", "DIMENS: {:?}", dimens);
+                    smspec.nlist = dimens[0];
+                    smspec
+                        .items
+                        .resize_with(dimens[0] as usize, Default::default);
+                    smspec.dims.copy_from_slice(&dimens[1..4]);
                 }
-                ("STARTDAT", BinRecord::Int(data)) => {
-                    if data.len() == 3 {
-                        smspec.start_date[..3].copy_from_slice(&data);
-                    } else if data.len() == 6 {
-                        smspec.start_date.copy_from_slice(&data);
+                ("STARTDAT", BinRecord::Int(start_dat)) => {
+                    log::trace!(target: "Parsing SMSPEC", "STARTDAT: {:?}", start_dat);
+                    if start_dat.len() == 3 {
+                        smspec.start_date[..3].copy_from_slice(&start_dat);
+                    } else if start_dat.len() == 6 {
+                        smspec.start_date.copy_from_slice(&start_dat);
                     } else {
-                        return Err(SummaryError::InvalidStartDateLength(data.len()).into());
+                        return Err(SummaryError::InvalidStartDateLength(start_dat.len()).into());
                     }
                 }
-                ("KEYWORDS", BinRecord::FixStr(data)) => {
-                    for (item, kw_name) in smspec.items.iter_mut().zip(data) {
+                ("KEYWORDS", BinRecord::FixStr(keywords)) => {
+                    log::trace!(target: "Parsing SMSPEC", "KEYWORDS: {:?}", keywords);
+                    for (item, kw_name) in smspec.items.iter_mut().zip(keywords) {
                         item.kw_name = *kw_name;
                     }
                 }
-                ("WGNAMES", BinRecord::FixStr(data)) => {
-                    for (item, wg_name) in smspec.items.iter_mut().zip(data) {
+                ("WGNAMES", BinRecord::FixStr(wgnames)) => {
+                    log::trace!(target: "Parsing SMSPEC", "WGNAMES: {:?}", wgnames);
+                    for (item, wg_name) in smspec.items.iter_mut().zip(wgnames) {
                         item.wg_name = *wg_name;
                     }
                 }
-                ("NAMES", BinRecord::DynStr(_, data)) => {
-                    for (item, wg_long_name) in smspec.items.iter_mut().zip(data) {
-                        item.wg_long_name = wg_long_name.drain(..).collect();
+                ("NAMES", BinRecord::DynStr(_, names)) => {
+                    log::trace!(target: "Parsing SMSPEC", "NAMES: {:?}", names);
+                    for (item, long_name) in smspec.items.iter_mut().zip(names) {
+                        item.wg_long_name = long_name.drain(..).collect();
                     }
                 }
-                ("NUMS", BinRecord::Int(data)) => {
-                    for (item, num) in smspec.items.iter_mut().zip(data) {
+                ("NUMS", BinRecord::Int(nums)) => {
+                    log::trace!(target: "Parsing SMSPEC", "NUMS: {:?}", nums);
+                    for (item, num) in smspec.items.iter_mut().zip(nums) {
                         item.num = *num;
                     }
                 }
-                ("UNITS", BinRecord::FixStr(data)) => {
-                    for (item, unit) in smspec.items.iter_mut().zip(data) {
+                ("UNITS", BinRecord::FixStr(units)) => {
+                    log::trace!(target: "Parsing SMSPEC", "UNITS: {:?}", units);
+                    for (item, unit) in smspec.items.iter_mut().zip(units) {
                         item.unit = *unit;
                     }
                 }
                 _ => {
-                    debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword: {:?}", kw);
+                    if kw.name.as_str() == "MEASRMNT" {
+                        log::trace!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword: {:#?}", kw);
+                    } else {
+                        log::debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword: {:?}", kw);
+                    }
                 }
             }
             Ok(())
@@ -276,7 +289,7 @@ impl Summary {
                         summary.blocks.entry(item.num).or_default().extend(hm);
                     }
                     _ => {
-                        debug!(target: "Building Summary",
+                        log::debug!(target: "Building Summary",
                             "Skipped a summary item. KEYWORD: {}, WGNAME: {}, NUM: {}",
                             name, item.wg_name, item.num
                         );
