@@ -2,10 +2,8 @@ use crate::eclipse_binary::{for_keyword_in, BinFile, BinRecord, FlexString};
 use crate::errors::SummaryError;
 
 use anyhow as ah;
-use log;
 use once_cell::sync::Lazy;
 use serde::Serialize;
-use serde_bytes;
 
 use std::collections::{HashMap, HashSet};
 
@@ -55,21 +53,64 @@ struct SmspecItem {
     unit: FlexString,
 }
 
+enum ItemId<'a> {
+    Time,
+    Performance,
+    Field,
+    Region(i32),
+    NamedRegion(&'a FlexString, i32),
+    Aquifer(i32),
+    Well(&'a FlexString),
+    Completion(&'a FlexString, i32),
+    Group(&'a FlexString),
+    Block(i32),
+}
+
 impl SmspecItem {
-    pub fn is_num_valid(&self) -> bool {
-        self.num > 0
-    }
-
-    pub fn is_wg_valid(&self) -> bool {
-        (self.wg_short_name.len() > 0 && &self.wg_short_name[..] != ":+:+:+:+")
-            || (self.wg_long_name.len() > 0 && &self.wg_long_name[..] != ":+:+:+:+")
-    }
-
-    pub fn wg_name(&mut self) -> &mut FlexString {
-        if self.wg_short_name.len() > 0 {
-            &mut self.wg_short_name
+    fn wg_name(&self) -> Option<&FlexString> {
+        if !self.wg_short_name.is_empty() && &self.wg_short_name[..] != ":+:+:+:+" {
+            Some(&self.wg_short_name)
+        } else if !self.wg_long_name.is_empty() && &self.wg_long_name[..] != ":+:+:+:+" {
+            Some(&self.wg_long_name)
         } else {
-            &mut self.wg_long_name
+            None
+        }
+    }
+
+    fn identify(&self) -> Option<ItemId> {
+        use ItemId::*;
+
+        let name = self.kw_name.as_str();
+        let wg_name = self.wg_name();
+        if TIMING_KEYWORDS.contains(name) {
+            Some(Time)
+        } else if PERFORMANCE_KEYWORDS.contains(name) {
+            Some(Performance)
+        } else {
+            match name.chars().next() {
+                Some('F') => Some(Field),
+                Some('R') if self.num > 0 => {
+                    if let Some(wg) = wg_name {
+                        Some(NamedRegion(wg, self.num))
+                    } else {
+                        Some(Region(self.num))
+                    }
+                }
+                Some('A') if self.num > 0 => Some(Aquifer(self.num)),
+                Some('W') if wg_name.is_some() => Some(Well(wg_name.unwrap())),
+                Some('C') if wg_name.is_some() && self.num > 0 => {
+                    Some(Completion(wg_name.unwrap(), self.num))
+                }
+                Some('G') if wg_name.is_some() => Some(Group(wg_name.unwrap())),
+                Some('B') if self.num > 0 => Some(Block(self.num)),
+                _ => {
+                    log::debug!(target: "Building Summary",
+                        "Skipped a summary item. KEYWORD: {}, WGNAME: {}, NAME: {}, NUM: {}",
+                        self.kw_name, self.wg_short_name, self.wg_long_name, self.num
+                    );
+                    None
+                }
+            }
         }
     }
 }
@@ -154,10 +195,8 @@ impl Smspec {
                     }
                 }
                 _ => {
-                    if kw.name.as_str() == "MEASRMNT" {
-                        log::trace!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword: {:#?}", kw);
-                    } else {
-                        log::debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword: {:?}", kw);
+                    if kw.name.as_str() != "MEASRMNT" {
+                        log::debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword: {:#?}", kw);
                     }
                 }
             }
@@ -225,7 +264,7 @@ pub struct Summary {
 
     /// Region data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    regions: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
+    regions: HashMap<(FlexString, i32), HashMap<FlexString, SummaryRecord>>,
 
     /// Aquifer data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
@@ -250,7 +289,7 @@ pub struct Summary {
 
 impl Summary {
     pub fn new(smspec_file: BinFile, unsmry_file: BinFile) -> ah::Result<Self> {
-        let mut smspec = Smspec::new(smspec_file)?;
+        let smspec = Smspec::new(smspec_file)?;
         let unsmry = Unsmry::new(unsmry_file, smspec.nlist)?;
 
         // We read all the data, now we place it in appropriate hash maps.
@@ -259,68 +298,67 @@ impl Summary {
             ..Default::default()
         };
 
-        for (item, values) in smspec.items.iter_mut().zip(unsmry.0) {
+        for (item, values) in smspec.items.into_iter().zip(unsmry.0) {
+            let id = item.identify();
+            if id.is_none() {
+                continue;
+            }
+            let id = id.unwrap();
+
             let values = ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(values)));
 
             let mut hm = HashMap::new();
             hm.insert(
-                item.kw_name.drain().collect(),
+                item.kw_name.clone(),
                 SummaryRecord {
-                    unit: item.unit.drain().collect(),
+                    unit: item.unit.clone(),
                     values,
                 },
             );
 
-            let name = item.kw_name.as_str();
-            if TIMING_KEYWORDS.contains(name) {
-                summary.time.extend(hm);
-            } else if PERFORMANCE_KEYWORDS.contains(name) {
-                summary.performance.extend(hm);
-            } else {
-                let num_valid = item.is_num_valid();
-                let wg_valid = item.is_wg_valid();
-
-                match &name[0..1] {
-                    "F" => {
-                        summary.field.extend(hm);
-                    }
-                    "R" if num_valid => {
-                        summary.regions.entry(item.num).or_default().extend(hm);
-                    }
-                    "A" if num_valid => {
-                        summary.aquifers.entry(item.num).or_default().extend(hm);
-                    }
-                    "W" if wg_valid => {
-                        summary
-                            .wells
-                            .entry(item.wg_name().drain().collect())
-                            .or_default()
-                            .extend(hm);
-                    }
-                    "C" if wg_valid && num_valid => {
-                        summary
-                            .completions
-                            .entry((item.wg_name().drain().collect(), item.num))
-                            .or_default()
-                            .extend(hm);
-                    }
-                    "G" if wg_valid => {
-                        summary
-                            .groups
-                            .entry(item.wg_name().drain().collect())
-                            .or_default()
-                            .extend(hm);
-                    }
-                    "B" if num_valid => {
-                        summary.blocks.entry(item.num).or_default().extend(hm);
-                    }
-                    _ => {
-                        log::debug!(target: "Building Summary",
-                            "Skipped a summary item. KEYWORD: {}, WGNAME: {}, NUM: {}",
-                            name, item.wg_short_name, item.num
-                        );
-                        continue;
-                    }
+            use ItemId::*;
+            match id {
+                Time => {
+                    summary.time.extend(hm);
+                }
+                Performance => {
+                    summary.performance.extend(hm);
+                }
+                Field => {
+                    summary.field.extend(hm);
+                }
+                Region(r_num) => {
+                    summary
+                        .regions
+                        .entry((FlexString::from(""), r_num))
+                        .or_default()
+                        .extend(hm);
+                }
+                NamedRegion(r, r_num) => {
+                    summary
+                        .regions
+                        .entry((r.clone(), r_num))
+                        .or_default()
+                        .extend(hm);
+                }
+                Aquifer(a) => {
+                    summary.aquifers.entry(a).or_default().extend(hm);
+                }
+                Well(w) => {
+                    summary.wells.entry(w.clone()).or_default().extend(hm);
+                }
+                Completion(c, w) => {
+                    summary
+                        .completions
+                        .entry((c.clone(), w))
+                        .or_default()
+                        .extend(hm);
+                }
+                Group(g) => {
+                    summary.groups.entry(g.clone()).or_default().extend(hm);
+                }
+                Block(b) => {
+                    summary.blocks.entry(b).or_default().extend(hm);
                 }
             }
         }

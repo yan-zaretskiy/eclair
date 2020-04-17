@@ -19,7 +19,7 @@ class DataPlotter(tts.HasTraits):
 
         self.data_manager = data_manager
         self.fig = go.FigureWidget()
-        self.fig.layout.margin = {"l": 0, "r": 0, "t": 40, "b": 0}
+        self.fig.layout.margin = {"l": 0, "r": 40, "t": 40, "b": 0}
         self.fig.layout.title.x = 0.5
         self.fig.layout.legend = {"orientation": "h"}
 
