@@ -22,8 +22,7 @@ pub type FlexString = SmallString<[u8; 8]>;
 pub enum BinRecord {
     Int(Vec<i32>),
     Boolean(Vec<i32>),
-    FixStr(Vec<FlexString>),
-    DynStr(usize, Vec<FlexString>),
+    Chars(usize, Vec<FlexString>),
 
     /// FP data is copied directly as bytes, their contents don't need to be examined
     F32Bytes(Vec<u8>),
@@ -44,7 +43,7 @@ impl BinRecord {
             b"REAL" => Ok(F32Bytes(Vec::new())),
             b"DOUB" => Ok(F64Bytes(Vec::new())),
             b"LOGI" => Ok(Boolean(Vec::new())),
-            b"CHAR" => Ok(FixStr(Vec::new())),
+            b"CHAR" => Ok(Chars(8, Vec::new())),
             b"MESS" => Ok(Message),
             [b'C', b'0', rest @ ..] => {
                 let len = if rest.iter().all(u8::is_ascii_digit) {
@@ -56,7 +55,7 @@ impl BinRecord {
                     .into());
                 };
 
-                Ok(DynStr(len, Vec::new()))
+                Ok(Chars(len, Vec::new()))
             }
             _ => Err(
                 BinaryError::InvalidDataType(String::from_utf8_lossy(&raw_dtype).to_string())
@@ -68,7 +67,7 @@ impl BinRecord {
     fn block_length(&self) -> usize {
         use BinRecord::*;
         match self {
-            FixStr(_) | DynStr(_, _) => BinRecord::STR_BLOCK_SIZE,
+            Chars(_, _) => BinRecord::STR_BLOCK_SIZE,
             _ => BinRecord::NUM_BLOCK_SIZE,
         }
     }
@@ -77,9 +76,9 @@ impl BinRecord {
         use BinRecord::*;
         match self {
             Int(_) | F32Bytes(_) | Boolean(_) => 4,
-            F64Bytes(_) | FixStr(_) => 8,
+            F64Bytes(_) => 8,
             Message => 0,
-            DynStr(len, _) => *len,
+            Chars(len, _) => *len,
         }
     }
 
@@ -94,8 +93,7 @@ impl BinRecord {
             Int(v) | Boolean(v) => v.push(BigEndian::read_i32(raw_chunk)),
             F32Bytes(v) => v.extend_from_slice(raw_chunk),
             F64Bytes(v) => v.extend_from_slice(raw_chunk),
-            FixStr(v) => v.push(FlexString::from(str::from_utf8(raw_chunk).unwrap().trim())),
-            DynStr(_, v) => v.push(FlexString::from(str::from_utf8(raw_chunk).unwrap().trim())),
+            Chars(_, v) => v.push(FlexString::from(str::from_utf8(raw_chunk).unwrap().trim())),
             Message => {}
         }
     }
@@ -308,7 +306,8 @@ mod tests {
 
         assert_eq!(
             kw.data,
-            BinRecord::FixStr(
+            BinRecord::Chars(
+                8,
                 vec!["FOPR", "FGPR", "FWPR", "WOPR", "WGPR"]
                     .iter()
                     .map(|&s| FlexString::from(s))
