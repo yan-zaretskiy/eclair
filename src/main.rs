@@ -1,10 +1,6 @@
-mod eclipse_binary;
-mod eclipse_summary;
-mod errors;
-
-use crate::eclipse_binary::BinFile;
-use crate::eclipse_summary::Summary;
-use crate::errors::FileError;
+use eclair::eclipse_binary::BinFile;
+use eclair::eclipse_summary::Summary;
+use eclair::errors::FileError;
 
 use anyhow as ah;
 use env_logger::{Builder, Env};
