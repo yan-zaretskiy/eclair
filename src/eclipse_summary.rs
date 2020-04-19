@@ -57,9 +57,10 @@ enum ItemId<'a> {
     Time,
     Performance,
     Field,
+    Aquifer(i32),
     Region(i32),
     NamedRegion(&'a FlexString, i32),
-    Aquifer(i32),
+    CrossRegionFlow(i32, i32),
     Well(&'a FlexString),
     Completion(&'a FlexString, i32),
     Group(&'a FlexString),
@@ -87,22 +88,28 @@ impl SmspecItem {
         } else if PERFORMANCE_KEYWORDS.contains(name) {
             Some(Performance)
         } else {
-            match name.chars().next() {
-                Some('F') => Some(Field),
-                Some('R') if self.num > 0 => {
+            match name.as_bytes() {
+                [b'F', ..] => Some(Field),
+                [b'A', ..] if self.num > 0 => Some(Aquifer(self.num)),
+                [b'R', b'N', b'L', b'F', ..] | [b'R', _, b'F', ..] if self.num > 0 => {
+                    let region2 = self.num / 32768 as i32 - 10;
+                    let region1 = self.num - 32768 * (region2 + 10);
+                    Some(CrossRegionFlow(region1, region2))
+                }
+                [b'R', ..] if self.num > 0 => {
                     if let Some(wg) = wg_name {
                         Some(NamedRegion(wg, self.num))
                     } else {
                         Some(Region(self.num))
                     }
                 }
-                Some('A') if self.num > 0 => Some(Aquifer(self.num)),
-                Some('W') if wg_name.is_some() => Some(Well(wg_name.unwrap())),
-                Some('C') if wg_name.is_some() && self.num > 0 => {
+                [b'W', ..] if wg_name.is_some() => Some(Well(wg_name.unwrap())),
+                [b'C', ..] if wg_name.is_some() && self.num > 0 => {
                     Some(Completion(wg_name.unwrap(), self.num))
                 }
-                Some('G') if wg_name.is_some() => Some(Group(wg_name.unwrap())),
-                Some('B') if self.num > 0 => Some(Block(self.num)),
+                [b'G', ..] if wg_name.is_some() => Some(Group(wg_name.unwrap())),
+                [b'B', ..] if self.num > 0 => Some(Block(self.num)),
+
                 _ => {
                     log::debug!(target: "Building Summary",
                         "Skipped a summary item. KEYWORD: {}, WGNAME: {}, NAME: {}, NUM: {}",
@@ -266,13 +273,17 @@ pub struct Summary {
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     field: HashMap<FlexString, SummaryRecord>,
 
+    /// Aquifer data
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    aquifers: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
+
     /// Region data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     regions: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
 
-    /// Aquifer data
+    /// Cell data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    aquifers: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
+    cross_region_flows: HashMap<(i32, i32), HashMap<FlexString, SummaryRecord>>,
 
     /// Well data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
@@ -331,6 +342,9 @@ impl Summary {
                 Field => {
                     summary.field.extend(hm);
                 }
+                Aquifer(a) => {
+                    summary.aquifers.entry(a).or_default().extend(hm);
+                }
                 Region(r_num) => {
                     summary.regions.entry(r_num).or_default().extend(hm);
                 }
@@ -338,8 +352,12 @@ impl Summary {
                     summary.region_names.insert(r_num, r.clone());
                     summary.regions.entry(r_num).or_default().extend(hm);
                 }
-                Aquifer(a) => {
-                    summary.aquifers.entry(a).or_default().extend(hm);
+                CrossRegionFlow(r1, r2) => {
+                    summary
+                        .cross_region_flows
+                        .entry((r1, r2))
+                        .or_default()
+                        .extend(hm);
                 }
                 Well(w) => {
                     summary.wells.entry(w.clone()).or_default().extend(hm);
