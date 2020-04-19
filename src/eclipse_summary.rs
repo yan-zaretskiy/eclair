@@ -318,21 +318,18 @@ impl Summary {
             if id.is_none() {
                 continue;
             }
-            let id = id.unwrap();
-
-            let values = ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(values)));
 
             let mut hm = HashMap::new();
             hm.insert(
                 item.kw_name.clone(),
                 SummaryRecord {
                     unit: item.unit.clone(),
-                    values,
+                    values: ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(values))),
                 },
             );
 
             use ItemId::*;
-            match id {
+            match id.unwrap() {
                 Time => {
                     summary.time.extend(hm);
                 }
