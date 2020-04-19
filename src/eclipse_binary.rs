@@ -22,7 +22,7 @@ pub type FlexString = SmallString<[u8; 8]>;
 pub enum BinRecord {
     Int(Vec<i32>),
     Boolean(Vec<i32>),
-    Chars(usize, Vec<FlexString>),
+    Chars(Vec<FlexString>),
 
     /// FP data is copied directly as bytes, their contents don't need to be examined
     F32Bytes(Vec<u8>),
@@ -36,15 +36,15 @@ impl BinRecord {
     const NUM_BLOCK_SIZE: usize = 1000;
     const STR_BLOCK_SIZE: usize = 105;
 
-    fn new(raw_dtype: [u8; 4]) -> ah::Result<Self> {
+    fn new(type_string: [u8; 4]) -> ah::Result<(Self, usize, usize)> {
         use BinRecord::*;
-        match &raw_dtype {
-            b"INTE" => Ok(Int(Vec::new())),
-            b"REAL" => Ok(F32Bytes(Vec::new())),
-            b"DOUB" => Ok(F64Bytes(Vec::new())),
-            b"LOGI" => Ok(Boolean(Vec::new())),
-            b"CHAR" => Ok(Chars(8, Vec::new())),
-            b"MESS" => Ok(Message),
+        match &type_string {
+            b"INTE" => Ok((Int(Vec::new()), 4, BinRecord::NUM_BLOCK_SIZE)),
+            b"REAL" => Ok((F32Bytes(Vec::new()), 4, BinRecord::NUM_BLOCK_SIZE)),
+            b"DOUB" => Ok((F64Bytes(Vec::new()), 8, BinRecord::NUM_BLOCK_SIZE)),
+            b"LOGI" => Ok((Boolean(Vec::new()), 4, BinRecord::NUM_BLOCK_SIZE)),
+            b"MESS" => Ok((Message, 0, BinRecord::NUM_BLOCK_SIZE)),
+            b"CHAR" => Ok((Chars(Vec::new()), 8, BinRecord::STR_BLOCK_SIZE)),
             [b'C', b'0', rest @ ..] => {
                 let len = if rest.iter().all(u8::is_ascii_digit) {
                     unsafe { str::from_utf8_unchecked(rest).parse().unwrap() }
@@ -55,53 +55,23 @@ impl BinRecord {
                     .into());
                 };
 
-                Ok(Chars(len, Vec::new()))
+                Ok((Chars(Vec::new()), len, BinRecord::STR_BLOCK_SIZE))
             }
-            _ => Err(
-                BinaryError::InvalidDataType(String::from_utf8_lossy(&raw_dtype).to_string())
-                    .into(),
-            ),
+            _ => Err(BinaryError::InvalidDataType(
+                String::from_utf8_lossy(&type_string).to_string(),
+            )
+            .into()),
         }
     }
 
-    fn block_length(&self) -> usize {
+    fn append(&mut self, raw_data: &[u8], element_size: usize) {
         use BinRecord::*;
-        match self {
-            Chars(_, _) => BinRecord::STR_BLOCK_SIZE,
-            _ => BinRecord::NUM_BLOCK_SIZE,
-        }
-    }
-
-    fn element_size(&self) -> usize {
-        use BinRecord::*;
-        match self {
-            Int(_) | F32Bytes(_) | Boolean(_) => 4,
-            F64Bytes(_) => 8,
-            Message => 0,
-            Chars(len, _) => *len,
-        }
-    }
-
-    fn bytes_for_elements(&self, n: usize) -> usize {
-        let n_blocks = 1 + (n - 1) / self.block_length();
-        n * self.element_size() + n_blocks * 4 * 2
-    }
-
-    fn push(&mut self, raw_chunk: &[u8]) {
-        use BinRecord::*;
-        match self {
-            Int(v) | Boolean(v) => v.push(BigEndian::read_i32(raw_chunk)),
-            F32Bytes(v) => v.extend_from_slice(raw_chunk),
-            F64Bytes(v) => v.extend_from_slice(raw_chunk),
-            Chars(_, v) => v.push(FlexString::from(str::from_utf8(raw_chunk).unwrap().trim())),
+        raw_data.chunks(element_size).for_each(|chunk| match self {
+            Int(v) | Boolean(v) => v.push(BigEndian::read_i32(chunk)),
+            F32Bytes(v) | F64Bytes(v) => v.extend_from_slice(chunk),
+            Chars(v) => v.push(FlexString::from(str::from_utf8(chunk).unwrap().trim())),
             Message => {}
-        }
-    }
-
-    fn append(&mut self, raw_data: &[u8]) {
-        raw_data
-            .chunks(self.element_size())
-            .for_each(|chunk| self.push(chunk));
+        });
     }
 }
 
@@ -155,7 +125,7 @@ mod parsing {
         Ok((data, input))
     }
 
-    pub(super) fn keyword_header(input: &[u8; 24]) -> ah::Result<(FlexString, usize, BinRecord)> {
+    pub(super) fn keyword_header(input: &[u8; 24]) -> ah::Result<(HeaderData, BinRecord)> {
         // header record, must be 16 bytes long in total
         let (header, _) =
             single_record_with_size(16, input).with_context(|| "Failed to read a data header.")?;
@@ -173,41 +143,67 @@ mod parsing {
             .with_context(|| "Failed to read a number of elements in a keyword array.")?;
 
         // 4-character string for a data type
-        let (dtype, header) =
+        let (type_string, header) =
             take(4, header).with_context(|| "Failed to read a data type string.")?;
-        let dtype = dtype.try_into().unwrap();
+        let type_string = type_string.try_into().unwrap();
 
         assert!(header.is_empty(), "Keyword header not completely consumed");
 
         // Init the data storage with the correct type
-        let data = BinRecord::new(dtype).with_context(|| "Failed to parse a data type.")?;
-        Ok((name, n_elements as usize, data))
+        let (data, element_size, block_length) =
+            BinRecord::new(type_string).with_context(|| "Failed to parse a data type.")?;
+
+        Ok((
+            HeaderData {
+                name,
+                n_elements: n_elements as usize,
+                element_size,
+                block_length,
+            },
+            data,
+        ))
     }
 
     pub(super) fn keyword_data(
-        n_elements: usize,
         mut data: BinRecord,
+        header: &HeaderData,
         input: &[u8],
     ) -> ah::Result<BinRecord> {
         // populate the actual array body from sub-blocks
-        let mut n_remaining_elements = n_elements;
+        let mut n_remaining_elements = header.n_elements;
         let mut remaining_input = input;
 
         while n_remaining_elements > 0 {
-            let to_read = min(data.block_length(), n_remaining_elements);
+            let to_read = min(header.block_length, n_remaining_elements);
             let (raw_data, input) =
-                single_record_with_size(to_read * data.element_size(), remaining_input)
+                single_record_with_size(to_read * header.element_size, remaining_input)
                     .with_context(|| {
                         format!(
                             "Failed to read a data body sub-block of size {}.",
-                            to_read * data.element_size()
+                            to_read * header.element_size
                         )
                     })?;
-            data.append(raw_data);
+            data.append(raw_data, header.element_size);
             n_remaining_elements -= to_read;
             remaining_input = input;
         }
         Ok(data)
+    }
+}
+
+/// Data extracted from a keyword header needed to populate the record
+#[derive(Debug)]
+struct HeaderData {
+    name: FlexString,
+    n_elements: usize,
+    element_size: usize,
+    block_length: usize,
+}
+
+impl HeaderData {
+    fn bytes_for_elements(&self) -> usize {
+        let n_blocks = 1 + (self.n_elements - 1) / self.block_length;
+        self.n_elements * self.element_size + n_blocks * 4 * 2
     }
 }
 
@@ -237,16 +233,22 @@ impl BinFile {
         let mut header_buf = [0u8; 24];
         self.reader.read_exact(&mut header_buf)?;
 
-        let (name, n_elements, data) = parsing::keyword_header(&header_buf)?;
+        let (header, data) = parsing::keyword_header(&header_buf)?;
 
         // Compute how many bytes we need to read from the data and extract it
-        let need_bytes = data.bytes_for_elements(n_elements);
+        let need_bytes = header.bytes_for_elements();
         let mut data_buf = vec![0; need_bytes];
         self.reader.read_exact(&mut data_buf)?;
 
-        let data = parsing::keyword_data(n_elements, data, &data_buf)?;
+        let data = parsing::keyword_data(data, &header, &data_buf)?;
 
-        Ok((BinKeyword { name, data }, self))
+        Ok((
+            BinKeyword {
+                name: header.name,
+                data,
+            },
+            self,
+        ))
     }
 }
 
@@ -297,17 +299,18 @@ mod tests {
     #[test]
     fn single_data_array_short() {
         let input = include_bytes!("../assets/single_data_array.bin");
-        let (name, n_elements, data) =
-            parsing::keyword_header(&input[..24].try_into().unwrap()).unwrap();
-        let data = parsing::keyword_data(n_elements, data, &input[24..]).unwrap();
-        let kw = BinKeyword { name, data };
+        let (header, data) = parsing::keyword_header(&input[..24].try_into().unwrap()).unwrap();
+        let data = parsing::keyword_data(data, &header, &input[24..]).unwrap();
+        let kw = BinKeyword {
+            name: header.name,
+            data,
+        };
 
         assert_eq!(kw.name, FlexString::from("KEYWORDS"));
 
         assert_eq!(
             kw.data,
             BinRecord::Chars(
-                8,
                 vec!["FOPR", "FGPR", "FWPR", "WOPR", "WGPR"]
                     .iter()
                     .map(|&s| FlexString::from(s))

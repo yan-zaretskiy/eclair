@@ -164,19 +164,19 @@ impl Smspec {
                         return Err(SummaryError::InvalidStartDateLength(start_dat.len()).into());
                     }
                 }
-                ("KEYWORDS", BinRecord::Chars(_, keywords)) => {
+                ("KEYWORDS", BinRecord::Chars(keywords)) => {
                     log::trace!(target: "Parsing SMSPEC", "KEYWORDS: {:?}", keywords);
                     for (item, kw_name) in smspec.items.iter_mut().zip(keywords) {
                         item.kw_name = kw_name.drain().collect();
                     }
                 }
-                ("WGNAMES", BinRecord::Chars(_, wgnames)) => {
+                ("WGNAMES", BinRecord::Chars(wgnames)) => {
                     log::trace!(target: "Parsing SMSPEC", "WGNAMES: {:?}", wgnames);
                     for (item, wg_name) in smspec.items.iter_mut().zip(wgnames) {
                         item.wg_short_name = wg_name.drain().collect();
                     }
                 }
-                ("NAMES", BinRecord::Chars(_, names)) => {
+                ("NAMES", BinRecord::Chars(names)) => {
                     log::trace!(target: "Parsing SMSPEC", "NAMES: {:?}", names);
                     for (item, long_name) in smspec.items.iter_mut().zip(names) {
                         item.wg_long_name = long_name.drain().collect();
@@ -188,7 +188,7 @@ impl Smspec {
                         item.num = *num;
                     }
                 }
-                ("UNITS", BinRecord::Chars(_, units)) => {
+                ("UNITS", BinRecord::Chars(units)) => {
                     log::trace!(target: "Parsing SMSPEC", "UNITS: {:?}", units);
                     for (item, unit) in smspec.items.iter_mut().zip(units) {
                         item.unit = unit.drain().collect();
