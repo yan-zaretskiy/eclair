@@ -254,6 +254,10 @@ pub struct Summary {
     /// Time data, should always be present
     time: HashMap<FlexString, SummaryRecord>,
 
+    /// Region names
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    region_names: HashMap<i32, FlexString>,
+
     /// Performance data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     performance: HashMap<FlexString, SummaryRecord>,
@@ -264,7 +268,7 @@ pub struct Summary {
 
     /// Region data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    regions: HashMap<(FlexString, i32), HashMap<FlexString, SummaryRecord>>,
+    regions: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
 
     /// Aquifer data
     #[serde(skip_serializing_if = "HashMap::is_empty")]
@@ -328,18 +332,11 @@ impl Summary {
                     summary.field.extend(hm);
                 }
                 Region(r_num) => {
-                    summary
-                        .regions
-                        .entry((FlexString::from(""), r_num))
-                        .or_default()
-                        .extend(hm);
+                    summary.regions.entry(r_num).or_default().extend(hm);
                 }
                 NamedRegion(r, r_num) => {
-                    summary
-                        .regions
-                        .entry((r.clone(), r_num))
-                        .or_default()
-                        .extend(hm);
+                    summary.region_names.insert(r_num, r.clone());
+                    summary.regions.entry(r_num).or_default().extend(hm);
                 }
                 Aquifer(a) => {
                     summary.aquifers.entry(a).or_default().extend(hm);
