@@ -142,7 +142,7 @@ impl Smspec {
 
         // Parse the SMSPEC file for enough metadata to correctly place data records
         for_keyword_in(smspec_file, |kw| {
-            match (kw.name.as_str(), &mut kw.data) {
+            match (kw.name.as_str(), kw.data) {
                 ("INTEHEAD", BinRecord::Int(header)) => {
                     smspec.units_system = match header[0] {
                         1 => Some(UnitSystem::Metric),
@@ -174,36 +174,36 @@ impl Smspec {
                 ("KEYWORDS", BinRecord::Chars(keywords)) => {
                     log::trace!(target: "Parsing SMSPEC", "KEYWORDS: {:?}", keywords);
                     for (item, kw_name) in smspec.items.iter_mut().zip(keywords) {
-                        item.kw_name = kw_name.drain().collect();
+                        item.kw_name = kw_name;
                     }
                 }
                 ("WGNAMES", BinRecord::Chars(wgnames)) => {
                     log::trace!(target: "Parsing SMSPEC", "WGNAMES: {:?}", wgnames);
                     for (item, wg_name) in smspec.items.iter_mut().zip(wgnames) {
-                        item.wg_short_name = wg_name.drain().collect();
+                        item.wg_short_name = wg_name;
                     }
                 }
                 ("NAMES", BinRecord::Chars(names)) => {
                     log::trace!(target: "Parsing SMSPEC", "NAMES: {:?}", names);
                     for (item, long_name) in smspec.items.iter_mut().zip(names) {
-                        item.wg_long_name = long_name.drain().collect();
+                        item.wg_long_name = long_name;
                     }
                 }
                 ("NUMS", BinRecord::Int(nums)) => {
                     log::trace!(target: "Parsing SMSPEC", "NUMS: {:?}", nums);
                     for (item, num) in smspec.items.iter_mut().zip(nums) {
-                        item.num = *num;
+                        item.num = num;
                     }
                 }
                 ("UNITS", BinRecord::Chars(units)) => {
                     log::trace!(target: "Parsing SMSPEC", "UNITS: {:?}", units);
                     for (item, unit) in smspec.items.iter_mut().zip(units) {
-                        item.unit = unit.drain().collect();
+                        item.unit = unit;
                     }
                 }
-                _ => {
+                (name, data) => {
                     if kw.name.as_str() != "MEASRMNT" {
-                        log::debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword: {:#?}", kw);
+                        log::debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword, name: {}, data: {:#?}", name, data);
                     }
                 }
             }
@@ -223,7 +223,7 @@ impl Unsmry {
 
         // Read data from the UNSMRY file
         for_keyword_in(unsmry_file, |kw| {
-            if let ("PARAMS", BinRecord::F32Bytes(params)) = (kw.name.as_str(), &kw.data) {
+            if let ("PARAMS", BinRecord::F32Bytes(params)) = (kw.name.as_str(), kw.data) {
                 for (values, param) in unsmry
                     .0
                     .iter_mut()

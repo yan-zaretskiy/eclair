@@ -255,13 +255,13 @@ impl BinFile {
 /// A helper function for processing keywords in a binary file.
 pub fn for_keyword_in<F>(mut bin: BinFile, mut fun: F) -> ah::Result<()>
 where
-    F: FnMut(&mut BinKeyword) -> ah::Result<()>,
+    F: FnMut(BinKeyword) -> ah::Result<()>,
 {
     loop {
         match bin.next_keyword() {
-            Ok((mut kw, remaining)) => {
+            Ok((kw, remaining)) => {
                 bin = remaining;
-                fun(&mut kw)?;
+                fun(kw)?;
             }
             // we break from the loop when we encounter the EOF,
             Err(e) => {
