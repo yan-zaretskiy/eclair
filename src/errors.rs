@@ -34,7 +34,4 @@ pub enum BinaryError {
 pub enum SummaryError {
     #[error("Invalid length for start date data: {0}.")]
     InvalidStartDateLength(usize),
-
-    #[error("Invalid integer id for the unit system: {0}.")]
-    InvalidUnitSystemId(i32),
 }
