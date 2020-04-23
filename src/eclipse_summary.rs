@@ -34,106 +34,120 @@ static PERFORMANCE_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     s
 });
 
-/// Units system used for a simulation run
-#[derive(Debug)]
-enum UnitSystem {
-    Metric,
-    Field,
-    Lab,
-    PvtM,
-}
-
-/// Represents metadata we collect for each time series.
+/// Raw metadata we collect for each time series.
 #[derive(Debug, Default)]
 struct SmspecItem {
-    kw_name: FlexString,
-    wg_short_name: FlexString,
-    wg_long_name: FlexString,
-    num: i32,
+    name: FlexString,
+    wg_name: FlexString,
+    index: i32,
     unit: FlexString,
 }
 
-enum ItemId<'a> {
-    Time,
-    Performance,
-    Field,
-    Aquifer(i32),
-    Region(i32),
-    NamedRegion(&'a FlexString, i32),
-    CrossRegionFlow(i32, i32),
-    Well(&'a FlexString),
-    Completion(&'a FlexString, i32),
-    Group(&'a FlexString),
-    Block(i32),
-}
-
-impl SmspecItem {
-    fn wg_name(&self) -> Option<&FlexString> {
-        if !self.wg_short_name.is_empty() && &self.wg_short_name[..] != ":+:+:+:+" {
-            Some(&self.wg_short_name)
-        } else if !self.wg_long_name.is_empty() && &self.wg_long_name[..] != ":+:+:+:+" {
-            Some(&self.wg_long_name)
-        } else {
-            None
-        }
-    }
-
-    fn identify(&self) -> Option<ItemId> {
-        use ItemId::*;
-
-        let name = self.kw_name.as_str();
-        let wg_name = self.wg_name();
-        if TIMING_KEYWORDS.contains(name) {
-            Some(Time)
-        } else if PERFORMANCE_KEYWORDS.contains(name) {
-            Some(Performance)
-        } else {
-            match name.as_bytes() {
-                [b'F', ..] => Some(Field),
-                [b'A', ..] if self.num > 0 => Some(Aquifer(self.num)),
-                [b'R', b'N', b'L', b'F', ..] | [b'R', _, b'F', ..] if self.num > 0 => {
-                    let region2 = self.num / 32768 as i32 - 10;
-                    let region1 = self.num - 32768 * (region2 + 10);
-                    Some(CrossRegionFlow(region1, region2))
-                }
-                [b'R', ..] if self.num > 0 => {
-                    if let Some(wg) = wg_name {
-                        Some(NamedRegion(wg, self.num))
-                    } else {
-                        Some(Region(self.num))
-                    }
-                }
-                [b'W', ..] if wg_name.is_some() => Some(Well(wg_name.unwrap())),
-                [b'C', ..] if wg_name.is_some() && self.num > 0 => {
-                    Some(Completion(wg_name.unwrap(), self.num))
-                }
-                [b'G', ..] if wg_name.is_some() => Some(Group(wg_name.unwrap())),
-                [b'B', ..] if self.num > 0 => Some(Block(self.num)),
-
-                _ => {
-                    log::debug!(target: "Building Summary",
-                        "Skipped a summary item. KEYWORD: {}, WGNAME: {}, NAME: {}, NUM: {}",
-                        self.kw_name, self.wg_short_name, self.wg_long_name, self.num
-                    );
-                    None
-                }
-            }
-        }
-    }
-}
-
-/// Contents of an SMSPEC file. Note that we don't extract everything, only those bits that
-/// are presently relevant to us. Notably, there is  related to LGRs.
+/// Contents of an SMSPEC file. Note that we don't extract everything, only those bits
+/// that are presently relevant to us. Notably, there is no data related to LGRs.
 /// This type could be extended later.
 #[derive(Debug, Default)]
 struct Smspec {
-    units_system: Option<UnitSystem>,
+    units_system: Option<i32>,
     simulator_id: Option<i32>,
     nlist: i32,
     dims: [i32; 3],
     start_date: [i32; 6],
 
     items: Vec<SmspecItem>,
+}
+
+/// Contents of an UNSMRY file stored as raw bytes.
+#[derive(Debug, Default)]
+struct Unsmry(Vec<Vec<u8>>);
+
+/// An item identifier derived from SMSPEC metadata.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+enum ItemId {
+    Time {
+        name: FlexString,
+    },
+    Performance {
+        name: FlexString,
+    },
+    Field {
+        name: FlexString,
+    },
+    Aquifer {
+        name: FlexString,
+        index: i32,
+    },
+    Region {
+        name: FlexString,
+        index: i32,
+    },
+    CrossRegionFlow {
+        name: FlexString,
+        from: i32,
+        to: i32,
+    },
+    Well {
+        name: FlexString,
+        location: FlexString,
+    },
+    Completion {
+        name: FlexString,
+        location: FlexString,
+        index: i32,
+    },
+    Group {
+        name: FlexString,
+        location: FlexString,
+    },
+    Block {
+        name: FlexString,
+        index: i32,
+    },
+    Unsupported {
+        name: FlexString,
+        location: FlexString,
+        index: i32,
+    },
+}
+
+const VEC_EXT_CODE: i8 = 2;
+
+#[derive(Debug, Serialize)]
+#[serde(rename = "_ExtStruct")]
+struct ExtVec((i8, serde_bytes::ByteBuf));
+
+/// Individual summary item with data combined from both SMSPEC and UNSMRY files.
+#[derive(Debug, Serialize)]
+struct SummaryItem {
+    id: ItemId,
+    unit: FlexString,
+    values: ExtVec,
+}
+
+/// The return type for parsing of SMSPEC+UNSMRY files.
+#[derive(Debug, Serialize)]
+pub struct Summary {
+    /// Unit system for a simulation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    units_system: Option<i32>,
+
+    /// A simulator identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
+    simulator_id: Option<i32>,
+
+    /// Grid dimensions of a simulation
+    dims: [i32; 3],
+
+    /// Simulation start date
+    start_date: [i32; 6],
+
+    /// Region names
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    region_names: HashMap<i32, FlexString>,
+
+    /// Simulation data
+    items: Vec<SummaryItem>,
 }
 
 impl Smspec {
@@ -143,14 +157,9 @@ impl Smspec {
         // Parse the SMSPEC file for enough metadata to correctly place data records
         for_keyword_in(smspec_file, |kw| {
             match (kw.name.as_str(), kw.data) {
+                // This keyword is optional
                 ("INTEHEAD", BinRecord::Int(header)) => {
-                    smspec.units_system = match header[0] {
-                        1 => Some(UnitSystem::Metric),
-                        2 => Some(UnitSystem::Field),
-                        3 => Some(UnitSystem::Lab),
-                        4 => Some(UnitSystem::PvtM),
-                        id => return Err(SummaryError::InvalidUnitSystemId(id).into()),
-                    };
+                    smspec.units_system = Some(header[0]);
                     smspec.simulator_id = Some(header[1]);
                 }
                 ("DIMENS", BinRecord::Int(dimens)) => {
@@ -174,25 +183,20 @@ impl Smspec {
                 ("KEYWORDS", BinRecord::Chars(keywords)) => {
                     log::trace!(target: "Parsing SMSPEC", "KEYWORDS: {:?}", keywords);
                     for (item, kw_name) in smspec.items.iter_mut().zip(keywords) {
-                        item.kw_name = kw_name;
+                        item.name = kw_name;
                     }
                 }
-                ("WGNAMES", BinRecord::Chars(wgnames)) => {
-                    log::trace!(target: "Parsing SMSPEC", "WGNAMES: {:?}", wgnames);
-                    for (item, wg_name) in smspec.items.iter_mut().zip(wgnames) {
-                        item.wg_short_name = wg_name;
-                    }
-                }
-                ("NAMES", BinRecord::Chars(names)) => {
-                    log::trace!(target: "Parsing SMSPEC", "NAMES: {:?}", names);
-                    for (item, long_name) in smspec.items.iter_mut().zip(names) {
-                        item.wg_long_name = long_name;
+                (kw @ "WGNAMES", BinRecord::Chars(wg_names))
+                | (kw @ "NAMES", BinRecord::Chars(wg_names)) => {
+                    log::trace!(target: "Parsing SMSPEC", "{}: {:?}", kw, wg_names);
+                    for (item, wg_name) in smspec.items.iter_mut().zip(wg_names) {
+                        item.wg_name = wg_name;
                     }
                 }
                 ("NUMS", BinRecord::Int(nums)) => {
                     log::trace!(target: "Parsing SMSPEC", "NUMS: {:?}", nums);
                     for (item, num) in smspec.items.iter_mut().zip(nums) {
-                        item.num = num;
+                        item.index = num;
                     }
                 }
                 ("UNITS", BinRecord::Chars(units)) => {
@@ -203,7 +207,7 @@ impl Smspec {
                 }
                 (name, data) => {
                     if kw.name.as_str() != "MEASRMNT" {
-                        log::debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword, name: {}, data: {:#?}", name, data);
+                        log::debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword, name: {}, data: {:?}", name, data);
                     }
                 }
             }
@@ -212,10 +216,6 @@ impl Smspec {
         Ok(smspec)
     }
 }
-
-/// Contents of an UNSMRY file stored as raw bytes.
-#[derive(Debug, Default)]
-struct Unsmry(Vec<Vec<u8>>);
 
 impl Unsmry {
     pub fn new(unsmry_file: BinFile, nlist: i32) -> ah::Result<Self> {
@@ -238,141 +238,91 @@ impl Unsmry {
     }
 }
 
-const VEC_EXT_CODE: i8 = 2;
-
-#[derive(Debug, Default, Serialize)]
-#[serde(rename = "_ExtStruct")]
-struct ExtVec((i8, serde_bytes::ByteBuf));
-
-#[derive(Debug, Default, Serialize)]
-struct SummaryRecord {
-    /// Physical units for the values
-    unit: FlexString,
-
-    /// Actual data
-    values: ExtVec,
-}
-
-#[derive(Debug, Serialize, Default)]
-pub struct Summary {
-    /// Simulation start date
-    start_date: [i32; 6],
-
-    /// Time data, should always be present
-    time: HashMap<FlexString, SummaryRecord>,
-
-    /// Region names
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    region_names: HashMap<i32, FlexString>,
-
-    /// Performance data
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    performance: HashMap<FlexString, SummaryRecord>,
-
-    /// Field data
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    field: HashMap<FlexString, SummaryRecord>,
-
-    /// Aquifer data
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    aquifers: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
-
-    /// Region data
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    regions: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
-
-    /// Cell data
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    cross_region_flows: HashMap<(i32, i32), HashMap<FlexString, SummaryRecord>>,
-
-    /// Well data
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    wells: HashMap<FlexString, HashMap<FlexString, SummaryRecord>>,
-
-    /// Well completion data
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    completions: HashMap<(FlexString, i32), HashMap<FlexString, SummaryRecord>>,
-
-    /// Group data
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    groups: HashMap<FlexString, HashMap<FlexString, SummaryRecord>>,
-
-    /// Cell data
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    blocks: HashMap<i32, HashMap<FlexString, SummaryRecord>>,
-}
-
 impl Summary {
     pub fn new(smspec_file: BinFile, unsmry_file: BinFile) -> ah::Result<Self> {
         let smspec = Smspec::new(smspec_file)?;
         let unsmry = Unsmry::new(unsmry_file, smspec.nlist)?;
 
-        // We read all the data, now we place it in appropriate hash maps.
         let mut summary = Summary {
             start_date: smspec.start_date,
-            ..Default::default()
+            units_system: smspec.units_system,
+            simulator_id: smspec.simulator_id,
+            dims: smspec.dims,
+            region_names: Default::default(),
+            items: vec![],
         };
 
         for (item, values) in smspec.items.into_iter().zip(unsmry.0) {
-            let id = item.identify();
-            if id.is_none() {
-                continue;
-            }
+            let name = item.name;
 
-            let mut hm = HashMap::new();
-            hm.insert(
-                item.kw_name.clone(),
-                SummaryRecord {
-                    unit: item.unit.clone(),
-                    values: ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(values))),
-                },
-            );
+            let wg_valid = !item.wg_name.is_empty() && &item.wg_name != ":+:+:+:+";
+            let num_valid = item.index > 0;
 
-            use ItemId::*;
-            match id.unwrap() {
-                Time => {
-                    summary.time.extend(hm);
+            let id = if TIMING_KEYWORDS.contains(name.as_str()) {
+                ItemId::Time { name }
+            } else if PERFORMANCE_KEYWORDS.contains(name.as_str()) {
+                ItemId::Performance { name }
+            } else {
+                match name.as_bytes() {
+                    [b'F', ..] => ItemId::Field { name },
+                    [b'A', ..] if num_valid => ItemId::Aquifer {
+                        name,
+                        index: item.index,
+                    },
+                    [b'R', b'N', b'L', b'F', ..] | [b'R', _, b'F', ..] if num_valid => {
+                        let region2 = item.index / 32768 as i32 - 10;
+                        let region1 = item.index - 32768 * (region2 + 10);
+                        ItemId::CrossRegionFlow {
+                            name,
+                            from: region1,
+                            to: region2,
+                        }
+                    }
+                    [b'R', ..] if num_valid => {
+                        if wg_valid {
+                            summary.region_names.insert(item.index, item.wg_name);
+                        }
+                        ItemId::Region {
+                            name,
+                            index: item.index,
+                        }
+                    }
+                    [b'W', ..] if wg_valid => ItemId::Well {
+                        name,
+                        location: item.wg_name,
+                    },
+                    [b'C', ..] if wg_valid && num_valid => ItemId::Completion {
+                        name,
+                        location: item.wg_name,
+                        index: item.index,
+                    },
+                    [b'G', ..] if wg_valid => ItemId::Group {
+                        name,
+                        location: item.wg_name,
+                    },
+                    [b'B', ..] if num_valid => ItemId::Block {
+                        name,
+                        index: item.index,
+                    },
+                    _ => {
+                        log::debug!(target: "Building Summary",
+                            "Skipped a summary item. KEYWORD: {}, WGNAME: {}, NUM: {}",
+                            name, item.wg_name, item.index
+                        );
+                        ItemId::Unsupported {
+                            name,
+                            location: item.wg_name,
+                            index: item.index,
+                        }
+                    }
                 }
-                Performance => {
-                    summary.performance.extend(hm);
-                }
-                Field => {
-                    summary.field.extend(hm);
-                }
-                Aquifer(a) => {
-                    summary.aquifers.entry(a).or_default().extend(hm);
-                }
-                Region(r_num) => {
-                    summary.regions.entry(r_num).or_default().extend(hm);
-                }
-                NamedRegion(r, r_num) => {
-                    summary.region_names.insert(r_num, r.clone());
-                    summary.regions.entry(r_num).or_default().extend(hm);
-                }
-                CrossRegionFlow(r1, r2) => {
-                    summary
-                        .cross_region_flows
-                        .entry((r1, r2))
-                        .or_default()
-                        .extend(hm);
-                }
-                Well(w) => {
-                    summary.wells.entry(w.clone()).or_default().extend(hm);
-                }
-                Completion(c, w) => {
-                    summary
-                        .completions
-                        .entry((c.clone(), w))
-                        .or_default()
-                        .extend(hm);
-                }
-                Group(g) => {
-                    summary.groups.entry(g.clone()).or_default().extend(hm);
-                }
-                Block(b) => {
-                    summary.blocks.entry(b).or_default().extend(hm);
-                }
-            }
+            };
+
+            summary.items.push(SummaryItem {
+                id,
+                unit: item.unit,
+                values: ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(values))),
+            });
         }
         Ok(summary)
     }

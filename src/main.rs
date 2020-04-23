@@ -11,6 +11,7 @@ use env_logger::{Builder, Env};
 use rmp_serde as rmps;
 use structopt::StructOpt;
 
+use serde::Serialize;
 use std::{fs::File, io::Write, path::PathBuf};
 
 #[derive(StructOpt)]
@@ -81,7 +82,10 @@ fn main() -> ah::Result<()> {
     )?;
 
     // serialize summary data in the MessagePack format
-    rmps::encode::write_named(&mut out_file, &summary)?;
+    let mut se = rmps::encode::Serializer::new(&mut out_file)
+        .with_struct_map()
+        .with_string_variants();
+    summary.serialize(&mut se)?;
 
     Ok(())
 }
