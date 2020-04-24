@@ -3,7 +3,71 @@ import datetime
 import msgpack
 import numpy as np
 
-from traits.api import Bool, cached_property, HasTraits, Dict, Property, Tuple
+from traits.api import (
+    Array,
+    cached_property,
+    Dict,
+    HasTraits,
+    Instance,
+    Int,
+    Property,
+    String,
+    Tuple,
+)
+
+
+class SummaryRecord(HasTraits):
+    unit = String
+    values = Array
+
+    def __repr__(self):
+        return f'SummaryRecord(unit="{self.unit}",\n values={self.values})'
+
+
+class Summary(HasTraits):
+    # Simulation start date
+    start_date = Instance(np.datetime64)
+
+    # Map of region indices to names
+    region_names = Dict(Int, String)
+
+    # Time data
+    time = Dict(String, SummaryRecord)
+
+    # Performance data
+    performance = Dict(String, SummaryRecord)
+
+    # Field data
+    field = Dict(String, SummaryRecord)
+
+    # Region data, resolved by index
+    regions = Dict(Tuple(String, Int), SummaryRecord)
+
+    # Well data, resolved by well name
+    wells = Dict(Tuple(String, String), SummaryRecord)
+
+    # Completion data, resolved by well name and cell index
+    completions = Dict(Tuple(String, String, Int), SummaryRecord)
+
+    # Group data, resolved by group name
+    groups = Dict(Tuple(String, String), SummaryRecord)
+
+    # Block data, resolved by cell index
+    blocks = Dict(Tuple(String, Int), SummaryRecord)
+
+    # Aquifer data, resolved by aquifer index
+    aquifers = Dict(Tuple(String, Int), SummaryRecord)
+
+    # Region-to-region flows, resolved by two region indices
+    cross_region_flows = Dict(Tuple(String, Int, Int), SummaryRecord)
+
+    dates = Property(depends_on=["start_date", "time"])
+
+    @cached_property
+    def _get_dates(self):
+        return self.start_date + (self.time["TIME"].values * 86400).astype(
+            "timedelta64[s]"
+        )
 
 
 def decode_start_date(obj):
@@ -27,7 +91,7 @@ def load_summary(path):
     with open(path, "rb") as fp:
         raw_bytes = fp.read()
 
-    return msgpack.unpackb(
+    unpacked = msgpack.unpackb(
         raw_bytes,
         strict_map_key=False,
         use_list=False,
@@ -35,99 +99,47 @@ def load_summary(path):
         object_hook=decode_start_date,
     )
 
+    summary = Summary(start_date=unpacked["start_date"])
 
-def get_dates(summary):
-    """Extract a list of dates from a summary."""
-    return summary["start_date"] + (summary["time"]["TIME"]["values"] * 86400).astype(
-        "timedelta64[s]"
-    )
+    # If we have region names, store them in the summary
+    if "region_names" in unpacked:
+        summary.region_names = unpacked["region_names"]
 
+    for item in unpacked["items"]:
+        item_id = item["id"]
+        kind = item_id["kind"]
+        data = SummaryRecord(unit=item["unit"], values=item["values"])
 
-def common_keys(summaries, union=False):
-    """Recursively extract common keys from a list of summaries."""
-    summaries = [s for s in summaries if isinstance(s, dict) and "unit" not in s]
-    if len(summaries) == 0:
-        return None
+        # global
+        if kind == "time":
+            summary.time[item_id["name"]] = data
+        elif kind == "performance":
+            summary.performance[item_id["name"]] = data
+        elif kind == "field":
+            summary.field[item_id["name"]] = data
 
-    keys = set(summaries[0].keys())
-    for s in summaries[1:]:
-        if union:
-            keys |= s.keys()
-        else:
-            keys &= s.keys()
-    keys -= {"start_date", "time"}
+        # index-based
+        elif kind == "aquifer":
+            summary.aquifers[(item_id["name"], item_id["index"])] = data
+        elif kind == "region":
+            summary.regions[(item_id["name"], item_id["index"])] = data
+        elif kind == "block":
+            summary.blocks[(item_id["name"], item_id["index"])] = data
 
-    return {k: common_keys([s.get(k) for s in summaries]) for k in keys}
+        # location-based
+        elif kind == "well":
+            summary.wells[(item_id["name"], item_id["location"])] = data
+        elif kind == "group":
+            summary.groups[(item_id["name"], item_id["location"])] = data
 
+        # cross-region and well completion
+        elif kind == "completion":
+            summary.completions[
+                (item_id["name"], item_id["location"], item_id["index"])
+            ] = data
+        elif kind == "cross_region_flow":
+            summary.cross_region_flows[
+                (item_id["name"], item_id["from"], item_id["to"])
+            ] = data
 
-GLOBAL_TYPES = {"performance", "field"}
-
-LOCAL_TYPES = {"regions", "aquifers", "wells", "completions", "groups", "blocks"}
-
-
-class DataManager(HasTraits):
-    """Class that holds a collection of summary data."""
-
-    # Tuple is needed by the DataSelector, so I used it instead of a List
-    selected_paths = Tuple()
-
-    # actual summary data mapped to a file path
-    summary_data = Dict()
-
-    # extracted datetime array per file path
-    dates = Dict()
-
-    # currently untested
-    all_keywords = Bool(False)
-
-    # currently untested
-    common_keys = Property(depends_on=["summary_data, add_keywords, selected_paths"])
-
-    def add_summary(self, path):
-        """Add new piece of summary data to the collection from a file."""
-        if path is None:
-            return
-
-        self.summary_data[path] = load_summary(path)
-        self.dates[path] = get_dates(self.summary_data[path])
-
-    def file_paths(self):
-        """Return all file paths for the loaded summary data."""
-        return self.summary_data.keys()
-
-    def unload_files(self, paths):
-        """Delete unnecessary data."""
-        for p in paths:
-            del self.summary_data[p]
-            del self.dates[p]
-
-    def get_data(self, path, kw_type, kw_loc, kw_name):
-        """Given the three keys, grabs the corresponding data vector."""
-        if path not in self.summary_data:
-            return None
-        res = self.summary_data[path]
-
-        if kw_type not in res:
-            return None
-        res = res[kw_type]
-
-        if kw_type in LOCAL_TYPES:
-            res = res.get(kw_loc)
-        if res is None:
-            return None
-
-        return res.get(kw_name)
-
-    @cached_property
-    def _get_common_keys(self):
-        """Either a union of an intersection of all keys present in summary dictionaries."""
-        return common_keys(
-            [self.summary_data[p] for p in self.selected_paths], self.all_keywords
-        )
-
-    @classmethod
-    def build(cls, paths):
-        dm = cls()
-        for p in paths:
-            dm.add_summary(p)
-        return dm
+    return summary
