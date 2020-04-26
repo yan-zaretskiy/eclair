@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn single_record_test() {
-        let input = include_bytes!("../assets/single_record.bin");
+        let input = include_bytes!("../../assets/single_record.bin");
         let (result, _) = parsing::single_record(input).unwrap();
 
         let mut buf = [0.0; 10];
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn single_data_array_short() {
-        let input = include_bytes!("../assets/single_data_array.bin");
+        let input = include_bytes!("../../assets/single_data_array.bin");
         let (header, data) = parsing::keyword_header(&input[..24].try_into().unwrap()).unwrap();
         let data = parsing::keyword_data(data, &header, &input[24..]).unwrap();
         let kw = BinKeyword {

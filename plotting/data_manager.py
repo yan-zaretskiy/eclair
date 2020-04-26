@@ -86,10 +86,15 @@ def ext_hook(code, data):
     return msgpack.ExtType(code, data)
 
 
-def load_summary(path):
-    """Load summary data from a file."""
-    with open(path, "rb") as fp:
-        raw_bytes = fp.read()
+def load_summary(file_or_bytes):
+    """Load summary data from a file or directly from bytes."""
+    if isinstance(file_or_bytes, str):
+        with open(file_or_bytes, "rb") as fp:
+            raw_bytes = fp.read()
+    elif isinstance(file_or_bytes, bytes):
+        raw_bytes = file_or_bytes
+    else:
+        raise TypeError("Input type has to be either a str or bytes.")
 
     unpacked = msgpack.unpackb(
         raw_bytes,
