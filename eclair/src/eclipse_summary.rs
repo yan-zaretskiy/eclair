@@ -1,11 +1,12 @@
 use crate::eclipse_binary::{for_keyword_in, BinFile, BinRecord, FlexString};
-use crate::errors::SummaryError;
+use crate::errors::{FileError, SummaryError};
 
 use anyhow as ah;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     let mut s = HashSet::new();
@@ -151,7 +152,7 @@ pub struct Summary {
 }
 
 impl Smspec {
-    pub fn new(smspec_file: BinFile) -> ah::Result<Self> {
+    fn new(smspec_file: BinFile) -> ah::Result<Self> {
         let mut smspec: Self = Default::default();
 
         // Parse the SMSPEC file for enough metadata to correctly place data records
@@ -218,7 +219,7 @@ impl Smspec {
 }
 
 impl Unsmry {
-    pub fn new(unsmry_file: BinFile, nlist: i32) -> ah::Result<Self> {
+    fn new(unsmry_file: BinFile, nlist: i32) -> ah::Result<Self> {
         let mut unsmry = Unsmry(vec![Default::default(); nlist as usize]);
 
         // Read data from the UNSMRY file
@@ -239,7 +240,7 @@ impl Unsmry {
 }
 
 impl Summary {
-    pub fn new(smspec_file: BinFile, unsmry_file: BinFile) -> ah::Result<Self> {
+    fn new(smspec_file: BinFile, unsmry_file: BinFile) -> ah::Result<Self> {
         let smspec = Smspec::new(smspec_file)?;
         let unsmry = Unsmry::new(unsmry_file, smspec.nlist)?;
 
@@ -325,5 +326,26 @@ impl Summary {
             });
         }
         Ok(summary)
+    }
+
+    pub fn from_path<P: AsRef<Path>>(input_path: P) -> ah::Result<Self> {
+        // If there is no stem, bail early
+        let input_path = input_path.as_ref();
+        if input_path.file_stem().is_none() {
+            return Err(FileError::InvalidFilePath.into());
+        }
+
+        // we allow either extension or no extension at all
+        if let Some(ext) = input_path.extension() {
+            let ext = ext.to_str();
+            if ext != Some("SMSPEC") && ext != Some("UNSMRY") {
+                return Err(FileError::InvalidFileExt.into());
+            }
+        }
+
+        let smspec = BinFile::new(input_path.with_extension("SMSPEC"))?;
+        let unsmry = BinFile::new(input_path.with_extension("UNSMRY"))?;
+
+        Summary::new(smspec, unsmry)
     }
 }
