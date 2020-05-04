@@ -160,6 +160,7 @@ impl Smspec {
             match (kw.name.as_str(), kw.data) {
                 // This keyword is optional
                 ("INTEHEAD", BinRecord::Int(header)) => {
+                    log::trace!(target: "Parsing SMSPEC", "INTEHEAD: {:?}", header);
                     smspec.units_system = Some(header[0]);
                     smspec.simulator_id = Some(header[1]);
                 }

@@ -13,6 +13,8 @@ def make_dashboard(data_manager, selector_width="350px", fig_layout=None):
     )
 
     fig = plotter.fig
+
+    # pass any user-provided layout settings
     if fig_layout is not None:
         fig.update_layout(fig_layout)
 
@@ -21,7 +23,7 @@ def make_dashboard(data_manager, selector_width="350px", fig_layout=None):
             VBox(
                 [
                     HTML(value="<b>Select Data:</b>"),
-                    selector.file_selector,
+                    selector.name_selector,
                     selector.type_selector,
                     selector.loc_selector,
                     selector.kw_selector,

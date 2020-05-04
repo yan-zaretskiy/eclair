@@ -11,7 +11,7 @@ class DataSelector(tts.HasTraits):
     data_manager = tts.Instance(DataManager).tag(sync=True)
 
     # List of loaded file paths
-    file_selector = tts.Instance(
+    name_selector = tts.Instance(
         wg.SelectMultiple,
         kw=dict(
             options=[],
@@ -72,29 +72,17 @@ class DataSelector(tts.HasTraits):
         wg.Checkbox, kw=dict(value=False, description="Plot deltas")
     ).tag(sync=True)
 
-    # currently unused - option to list either union or intersection of keywords
-    # across all loaded files
-    use_all_kws = tts.Instance(
-        wg.Checkbox, kw=dict(value=False, description="List keywords from all files")
-    ).tag(sync=True)
-
     # dummy trait to signal that data needs to be re-plotted
     request_plot = tts.Int(0).tag(sync=True)
-
-    # cached values of location and kw selectors
-    _cached_locs = tts.Dict().tag(sync=True)
-    _cached_kws = tts.Dict().tag(sync=True)
 
     def __init__(self, data_manager, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_manager = data_manager
 
-        self.file_selector.options = [
-            (os.path.basename(p), p) for p in self.data_manager.file_paths()
-        ]
+        self.name_selector.options = [n for n in self.data_manager.summary_data.keys()]
 
         # setup observers
-        self.file_selector.observe(self._file_selected, names="value")
+        self.name_selector.observe(self._name_selected, names="value")
         self.type_selector.observe(self._type_selected, names="value")
         self.loc_selector.observe(self._loc_selected, names="value")
         self.kw_selector.observe(self._kw_selected, names="value")
@@ -112,29 +100,23 @@ class DataSelector(tts.HasTraits):
         )
 
     # Private event handlers
-    def _file_selected(self, change):
+    def _name_selected(self, change):
         """Compute all the common keys and populate the type selector options."""
 
         # first we let the data manager know
-        self.data_manager.selected_paths = self.file_selector.value
-
-        # then we reset the selection cache
-        self._cached_locs = {}
-        self._cached_kws = {}
+        self.data_manager.selected_names = self.name_selector.value
 
         # now we can update the selector widgets
         self.type_selector.disabled = False
-        if self.data_manager.common_keys is not None:
+        ck = self.data_manager.common_keys()
+        if ck is not None:
             self.type_selector.options = sorted(
-                [(k.capitalize(), k) for k in self.data_manager.common_keys],
-                key=lambda x: x[0],
+                [(k.capitalize(), k) for k in ck], key=lambda x: x[0],
             )
             self._propagate_type_selection(self.type_selector.value)
 
             self.ref_selector.disabled = False
-            self.ref_selector.options = [
-                (os.path.basename(v), v) for v in self.file_selector.value
-            ]
+            self.ref_selector.options = [v for v in self.name_selector.value]
         else:
             # clear and disable all selection widgets
             self.type_selector.options = []
@@ -152,27 +134,16 @@ class DataSelector(tts.HasTraits):
 
     def _loc_selected(self, change):
         """Populate the keyword selector options."""
-        selection = change["new"]
-        self._cached_locs[self.type_selector.value] = selection
         self._update_selector(selector=self.kw_selector)
 
     def _kw_selected(self, change):
-        """Cache the selection and trigger plotting."""
-        selection = change["new"]
-        cur_type = self.type_selector.value
-        if cur_type in LOCAL_TYPES:
-            cur_loc = self.loc_selector.value
-            self._cached_kws[cur_loc] = selection
-        else:
-            self._cached_kws[cur_type] = selection
-
+        """Trigger plotting."""
         self.request_plot += 1
 
     # Private methods
     def _propagate_type_selection(self, value):
         """Populate the location and keyword selectors options."""
         if value in LOCAL_TYPES:
-            self.kw_selector.disabled = True
             self._update_selector(selector=self.loc_selector)
         else:
             self.loc_selector.disabled = True
@@ -181,32 +152,34 @@ class DataSelector(tts.HasTraits):
 
     def _update_selector(self, selector):
         """Update selectors and trigger plotting"""
-        if self.data_manager.common_keys is None:
+        ck = self.data_manager.common_keys()
+        if ck is None:
             return
 
         selector.disabled = False
         cur_type = self.type_selector.value
-        cur_type_keys = self.data_manager.common_keys[cur_type]
+        cur_type_keys = ck[cur_type]
 
         if selector == self.loc_selector:
-            common_keys = cur_type_keys
-            cached_value = self._cached_locs.get(cur_type)
-        else:  # a kw selector
-            # we need to inspect both types and locations
-            if cur_type in LOCAL_TYPES:
-                cur_loc = self.loc_selector.value
-                common_keys = cur_type_keys[cur_loc]
-                cached_value = self._cached_kws.get(cur_loc)
-            else:
-                common_keys = cur_type_keys
-                cached_value = self._cached_kws.get(cur_type)
+            selector.options = sorted(
+                list(set((str(loc), loc) for kw, loc in cur_type_keys)),
+                key=lambda x: x[1],
+            )
 
-        selector.options = sorted(
-            [(str(k), k) for k in common_keys], key=lambda x: x[1]
-        )
-
-        if cached_value is not None:
-            selector.value = cached_value
+        # we need to inspect both types and locations
+        if cur_type in LOCAL_TYPES:
+            self.kw_selector.options = sorted(
+                [
+                    (str(kw), kw)
+                    for kw, loc in cur_type_keys
+                    if loc == self.loc_selector.value
+                ],
+                key=lambda x: x[1],
+            )
+        else:
+            self.kw_selector.options = sorted(
+                [(str(kw), kw) for kw in cur_type_keys], key=lambda x: x[1]
+            )
 
         self.request_plot += 1
 
