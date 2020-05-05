@@ -14,7 +14,7 @@ The specification is list of keywords with metadata describing how to interpret 
 
 - `UNITS` - an 8-char string representing the physical units;
 
-- `WGNAMES` and `NUMS` - an 8-char string and an integer that, together with a keyword name, identify the nature of a data vector (e.g. field data, well data, performance indicator);
+- `WGNAMES`/`NAMES` and `NUMS` - an fixed/dynamic length string and an integer that, together with a keyword name, identify the nature of a data vector (e.g. field data, well data, performance indicator);
 
   ## Summary file
 
@@ -37,6 +37,3 @@ A vector is uniquely identified by its own name and optionally the corresponding
 - `G...`, e.g. `GOPR`, only need a group name;
   
 - Vectors for a cell or region numbers (`B...` and `R...`) need an additional index from `NUMS`;
-
-  
-
