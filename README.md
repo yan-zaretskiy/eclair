@@ -5,7 +5,7 @@ At this point all it can do is convert `UNSMRY` files into the MessagePack forma
 ## Building
 
 - Install Rust and Cargo. Refer to https://rustup.rs/ for rust installation;
-- Inside the repo run `cargo build` or `cargo build --release`;
+- Inside the repo run `cargo build --all-features` or `cargo build --all-features --release`;
 
 ## Running
 - Inside the repo, run `cargo install --path .`, which will make `eclair` discoverable on your system. Then run
