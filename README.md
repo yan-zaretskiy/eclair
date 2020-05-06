@@ -5,6 +5,7 @@ At this point all it can do is convert `UNSMRY` files into the MessagePack forma
 ## Building
 
 - Install Rust and Cargo. Refer to https://rustup.rs/ for rust installation;
+- Make sure you add the nightly Rust by running `rustup toolchain install nightly`;
 - Inside the repo run `cargo build --all-features` or `cargo build --all-features --release`;
 
 ## Running

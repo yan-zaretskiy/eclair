@@ -5,5 +5,7 @@ members = [
     "eclpy"
 ]
 
+default-members = ["eclair"]
+
 [profile.release]
 panic = 'abort'
