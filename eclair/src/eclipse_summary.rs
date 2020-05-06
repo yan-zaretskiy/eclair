@@ -1,12 +1,16 @@
 use crate::eclipse_binary::{for_keyword_in, BinFile, BinRecord, FlexString};
 use crate::errors::{FileError, SummaryError};
 
-use anyhow as ah;
+use anyhow::{self as ah, Context};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 
-use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::{
+    collections::{HashMap, HashSet},
+    fs::File,
+    io::{BufReader, Read},
+    path::Path,
+};
 
 static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     let mut s = HashSet::new();
@@ -152,7 +156,10 @@ pub struct Summary {
 }
 
 impl Smspec {
-    fn new(smspec_file: BinFile) -> ah::Result<Self> {
+    fn new<R>(smspec_file: BinFile<R>) -> ah::Result<Self>
+    where
+        R: Read,
+    {
         let mut smspec: Self = Default::default();
 
         // Parse the SMSPEC file for enough metadata to correctly place data records
@@ -220,7 +227,10 @@ impl Smspec {
 }
 
 impl Unsmry {
-    fn new(unsmry_file: BinFile, nlist: i32) -> ah::Result<Self> {
+    fn new<R>(unsmry_file: BinFile<R>, nlist: i32) -> ah::Result<Self>
+    where
+        R: Read,
+    {
         let mut unsmry = Unsmry(vec![Default::default(); nlist as usize]);
 
         // Read data from the UNSMRY file
@@ -241,9 +251,13 @@ impl Unsmry {
 }
 
 impl Summary {
-    fn new(smspec_file: BinFile, unsmry_file: BinFile) -> ah::Result<Self> {
-        let smspec = Smspec::new(smspec_file)?;
-        let unsmry = Unsmry::new(unsmry_file, smspec.nlist)?;
+    pub fn new<R1, R2>(smspec: R1, unsmry: R2) -> ah::Result<Self>
+    where
+        R1: Read,
+        R2: Read,
+    {
+        let smspec = Smspec::new(BinFile::new(smspec))?;
+        let unsmry = Unsmry::new(BinFile::new(unsmry), smspec.nlist)?;
 
         let mut summary = Summary {
             start_date: smspec.start_date,
@@ -344,8 +358,14 @@ impl Summary {
             }
         }
 
-        let smspec = BinFile::new(input_path.with_extension("SMSPEC"))?;
-        let unsmry = BinFile::new(input_path.with_extension("UNSMRY"))?;
+        let open_file = |path| -> ah::Result<_> {
+            Ok(BufReader::new(File::open(path).with_context(|| {
+                "Failed to open file at requested path"
+            })?))
+        };
+
+        let smspec = open_file(input_path.with_extension("SMSPEC"))?;
+        let unsmry = open_file(input_path.with_extension("UNSMRY"))?;
 
         Summary::new(smspec, unsmry)
     }

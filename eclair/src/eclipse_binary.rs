@@ -8,10 +8,7 @@ use smallstr::SmallString;
 use std::{
     cmp::min,
     convert::TryInto,
-    fs::File,
-    io,
-    io::{prelude::*, BufReader},
-    path::Path,
+    io::{self, Read},
     str,
 };
 
@@ -216,16 +213,19 @@ pub struct BinKeyword {
 
 /// A binary file is an iterator over keywords read from a file one at a time.
 #[derive(Debug)]
-pub struct BinFile {
-    reader: BufReader<File>,
+pub struct BinFile<R>
+where
+    R: Read,
+{
+    reader: R,
 }
 
-impl BinFile {
-    pub fn new<P: AsRef<Path>>(path: P) -> ah::Result<Self> {
-        let file = File::open(path).with_context(|| "Failed to open file at requested path")?;
-        Ok(Self {
-            reader: BufReader::new(file),
-        })
+impl<R> BinFile<R>
+where
+    R: Read,
+{
+    pub fn new(reader: R) -> Self {
+        Self { reader }
     }
 
     pub fn next_keyword(mut self) -> ah::Result<(BinKeyword, Self)> {
@@ -253,8 +253,9 @@ impl BinFile {
 }
 
 /// A helper function for processing keywords in a binary file.
-pub fn for_keyword_in<F>(mut bin: BinFile, mut fun: F) -> ah::Result<()>
+pub fn for_keyword_in<R, F>(mut bin: BinFile<R>, mut fun: F) -> ah::Result<()>
 where
+    R: Read,
     F: FnMut(BinKeyword) -> ah::Result<()>,
 {
     loop {
