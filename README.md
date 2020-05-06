@@ -25,3 +25,19 @@ At this point all it can do is convert `UNSMRY` files into the MessagePack forma
 ## Inspecting results
 
 - Inside the `plotting` folder there is Python code that uses `ipywidgets` in a Jupyter notebook to load and display data from the MessagePack format. The `docs` folder contains a brief description of the MessagePack layout. The data is loaded in Python as a tree of nested dictionaries, so it's rather easy to inspect its contents manually. For this you'd only need to call the `load_summary(file_path)` method from the `data_manager.py` module.
+
+## Inspecting results (web)
+
+### Prerequisites
+
+1. A NodeJS runtime with `npm` -- this is used for the entire front end of the client.
+2. `wasm-pack` accessible via your `PATH`, which is used to package up `eclair` into WASM for the front end.
+
+```sh
+cd eclair-web
+npm install # bring local dependencies into the `node_modules/` directory
+
+# Now you can run different workflows for development:
+npm run-script build # compiles assets into the `dist/` directory
+npm start # does a build AND starts a development server with live reloading
+```

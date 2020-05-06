@@ -2,6 +2,7 @@
 
 members = [
     "eclair",
+    "eclair-web/crate",
     "eclpy",
 ]
 
