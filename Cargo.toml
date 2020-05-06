@@ -2,7 +2,7 @@
 
 members = [
     "eclair",
-    "eclpy"
+    "eclpy",
 ]
 
 default-members = ["eclair"]
