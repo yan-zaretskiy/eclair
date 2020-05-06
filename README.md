@@ -12,13 +12,13 @@ At this point all it can do is convert `UNSMRY` files into the MessagePack forma
 
 - Inside the repo, run `cargo install --path .`, which will make `eclair` discoverable on your system. Then run
 
-    ```
+    ```sh
     eclair <INPUT>
     ```
 
     where `<INPUT>` is either an `SMSPEC` or an `UNSMRY` file. File extension can be omitted, e.g.
 
-    ```
+    ```sh
     eclair SPE10
     ```
 
