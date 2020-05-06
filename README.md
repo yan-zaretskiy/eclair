@@ -10,7 +10,7 @@ At this point all it can do is convert `UNSMRY` files into the MessagePack forma
 
 ## Running
 
-- Inside the repo, run `cargo install --path .`, which will make `eclair` discoverable on your system. Then run
+- Inside the repo, run `cargo install --path eclair --bin eclair --all-features`, which will make `eclair` discoverable on your system. Then run:
 
     ```sh
     eclair <INPUT>
