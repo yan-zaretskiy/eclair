@@ -6,6 +6,10 @@ import traitlets as tts
 from data_manager import DataManager, LOCAL_TYPES
 
 
+def loc_name(loc, cur_type):
+    return "{} \u2192 {}".format(*loc) if cur_type == "cross_region_flows" else str(loc)
+
+
 class DataSelector(tts.HasTraits):
     # an object that we view
     data_manager = tts.Instance(DataManager).tag(sync=True)
@@ -111,7 +115,7 @@ class DataSelector(tts.HasTraits):
         ck = self.data_manager.common_keys()
         if ck is not None:
             self.type_selector.options = sorted(
-                [(k.capitalize(), k) for k in ck], key=lambda x: x[0],
+                [(k.capitalize().replace("_", " "), k) for k in ck], key=lambda x: x[0],
             )
             self._propagate_type_selection(self.type_selector.value)
 
@@ -162,7 +166,7 @@ class DataSelector(tts.HasTraits):
 
         if selector == self.loc_selector:
             selector.options = sorted(
-                list(set((str(loc), loc) for kw, loc in cur_type_keys)),
+                list(set((loc_name(loc, cur_type), loc) for kw, loc in cur_type_keys)),
                 key=lambda x: x[1],
             )
 

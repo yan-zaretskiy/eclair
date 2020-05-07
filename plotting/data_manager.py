@@ -9,7 +9,15 @@ from traits.api import (
 from summary import Summary
 
 GLOBAL_TYPES = {"performance", "field"}
-LOCAL_TYPES = {"regions", "aquifers", "wells", "completions", "groups", "blocks"}
+LOCAL_TYPES = {
+    "regions",
+    "aquifers",
+    "wells",
+    "completions",
+    "groups",
+    "blocks",
+    "cross_region_flows",
+}
 
 
 class DataManager(HasTraits):

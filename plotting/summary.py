@@ -59,7 +59,7 @@ class Summary(HasTraits):
     aquifers = Dict(Tuple(String, Int), SummaryRecord)
 
     # Region-to-region flows, resolved by two region indices
-    cross_region_flows = Dict(Tuple(String, Int, Int), SummaryRecord)
+    cross_region_flows = Dict(Tuple(String, Tuple(Int, Int)), SummaryRecord)
 
     dates = Property(depends_on=["start_date", "time"])
 
@@ -150,7 +150,7 @@ def extract_summary(file_or_bytes):
             ] = data
         elif kind == "cross_region_flow":
             summary.cross_region_flows[
-                (item_id["name"], item_id["from"], item_id["to"])
+                (item_id["name"], (item_id["from"], item_id["to"]))
             ] = data
 
     return summary
