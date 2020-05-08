@@ -12,7 +12,7 @@ python -m ipykernel install --user --name=eclair
 
 After that navigate to the `eclpy` folder of this repo and run
 ```
-maturin develop
+maturin develop --release
 ```
 At this point you can go back to the `plotting` folder and start the Jupyter notebook server
 ```

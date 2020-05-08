@@ -24,7 +24,9 @@ At this point all it can do is convert `UNSMRY` files into the MessagePack forma
 
 ## Inspecting results
 
-- Inside the `plotting` folder there is Python code that uses `ipywidgets` in a Jupyter notebook to load and display data from the MessagePack format. The `docs` folder contains a brief description of the MessagePack layout.
+Inside the `plotting` folder there is Python code that uses `ipywidgets` in a Jupyter notebook to load and display data from the MessagePack format. Consult the `README.md` file in that folder to setup an appropriate Python environment.
+ 
+The `docs` folder contains a brief description of the MessagePack layout in case you want to manually inspect it.
 
 ## Inspecting results (web)
 
