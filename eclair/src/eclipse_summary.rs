@@ -36,6 +36,7 @@ static PERFORMANCE_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     s.insert("TIMESTEP");
     s.insert("MEMGB");
     s.insert("MAXMEMGB");
+    s.insert("NAIMFRAC");
     s
 });
 
