@@ -47,7 +47,7 @@ class Summary(HasTraits):
     wells = Dict(Tuple(String, String), SummaryRecord)
 
     # Completion data, resolved by well name and cell index
-    completions = Dict(Tuple(String, String, Int), SummaryRecord)
+    completions = Dict(Tuple(String, Tuple(String, Int)), SummaryRecord)
 
     # Group data, resolved by group name
     groups = Dict(Tuple(String, String), SummaryRecord)
@@ -146,7 +146,7 @@ def extract_summary(file_or_bytes):
         # cross-region and well completion
         elif kind == "completion":
             summary.completions[
-                (item_id["name"], item_id["location"], item_id["index"])
+                (item_id["name"], (item_id["location"], item_id["index"]))
             ] = data
         elif kind == "cross_region_flow":
             summary.cross_region_flows[
