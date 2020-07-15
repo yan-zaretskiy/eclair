@@ -72,6 +72,22 @@ impl BinRecord {
     }
 }
 
+/// Data extracted from a keyword header needed to populate the record
+#[derive(Debug)]
+struct HeaderData {
+    name: FlexString,
+    n_elements: usize,
+    element_size: usize,
+    block_length: usize,
+}
+
+impl HeaderData {
+    fn n_bytes_for_all_elements(&self) -> usize {
+        let n_blocks = 1 + (self.n_elements - 1) / self.block_length;
+        self.n_elements * self.element_size + n_blocks * 4 * 2
+    }
+}
+
 /// Helper functions for parsing binary files
 mod parsing {
     use super::*;
@@ -161,7 +177,7 @@ mod parsing {
         ))
     }
 
-    pub(super) fn keyword_data(
+    pub(super) fn fill_keyword_data(
         mut data: BinRecord,
         header: &HeaderData,
         input: &[u8],
@@ -185,22 +201,6 @@ mod parsing {
             remaining_input = input;
         }
         Ok(data)
-    }
-}
-
-/// Data extracted from a keyword header needed to populate the record
-#[derive(Debug)]
-struct HeaderData {
-    name: FlexString,
-    n_elements: usize,
-    element_size: usize,
-    block_length: usize,
-}
-
-impl HeaderData {
-    fn bytes_for_elements(&self) -> usize {
-        let n_blocks = 1 + (self.n_elements - 1) / self.block_length;
-        self.n_elements * self.element_size + n_blocks * 4 * 2
     }
 }
 
@@ -229,18 +229,18 @@ where
     }
 
     pub fn next_keyword(mut self) -> ah::Result<(BinKeyword, Self)> {
-        // Look at the next 24 bytes and try reading the header
+        // Try to read the header from the next 24 bytes
         let mut header_buf = [0u8; 24];
         self.reader.read_exact(&mut header_buf)?;
 
         let (header, data) = parsing::keyword_header(&header_buf)?;
 
         // Compute how many bytes we need to read from the data and extract it
-        let need_bytes = header.bytes_for_elements();
+        let need_bytes = header.n_bytes_for_all_elements();
         let mut data_buf = vec![0; need_bytes];
         self.reader.read_exact(&mut data_buf)?;
 
-        let data = parsing::keyword_data(data, &header, &data_buf)?;
+        let data = parsing::fill_keyword_data(data, &header, &data_buf)?;
 
         Ok((
             BinKeyword {
@@ -301,7 +301,7 @@ mod tests {
     fn single_data_array_short() {
         let input = include_bytes!("../../assets/single_data_array.bin");
         let (header, data) = parsing::keyword_header(&input[..24].try_into().unwrap()).unwrap();
-        let data = parsing::keyword_data(data, &header, &input[24..]).unwrap();
+        let data = parsing::fill_keyword_data(data, &header, &input[24..]).unwrap();
         let kw = BinKeyword {
             name: header.name,
             data,

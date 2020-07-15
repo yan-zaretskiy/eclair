@@ -361,7 +361,7 @@ impl Summary {
 
         let open_file = |path| -> ah::Result<_> {
             Ok(BufReader::new(File::open(path).with_context(|| {
-                "Failed to open file at requested path"
+                "Failed to open a file at the requested path"
             })?))
         };
 

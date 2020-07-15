@@ -11,17 +11,34 @@ use std::{fs::File, io::Write, path::PathBuf};
 #[derive(StructOpt)]
 #[structopt(
     name = "eclair",
-    about = "A converter of Eclipse summary files to MessagePack.",
+    about = "Tool suite to manage Eclipse summary files.",
     author = "Yan Zaretskiy"
 )]
-struct Opt {
-    /// Input file
-    #[structopt(parse(from_os_str))]
-    input: PathBuf,
+enum Opt {
+    /// Convert an Eclipse summary file to MessagePack format
+    Convert {
+        /// Input summary file
+        #[structopt(parse(from_os_str))]
+        input: PathBuf,
 
-    /// Output file
-    #[structopt(parse(from_os_str), short, long)]
-    output: Option<PathBuf>,
+        /// Output MessagePack file
+        #[structopt(parse(from_os_str), short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Compare two Eclipse summary files
+    Diff {
+        /// Input summary file
+        #[structopt(parse(from_os_str))]
+        input: PathBuf,
+
+        /// Reference summary file
+        #[structopt(parse(from_os_str))]
+        reference: PathBuf,
+
+        /// Output HTML file
+        #[structopt(parse(from_os_str), short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn init_logger() {
@@ -49,22 +66,27 @@ fn main() -> ah::Result<()> {
 
     // Read the CLI arguments.
     let opt = Opt::from_args();
-    let input_path = opt.input;
 
-    // Parse SMSPEC & UNSMRY files.
-    let summary = Summary::from_path(&input_path)?;
+    match opt {
+        Opt::Convert { input, output } => {
+            // Parse SMSPEC & UNSMRY files.
+            let summary = Summary::from_path(&input)?;
+            // Create an output file.
+            let mut out_file = File::create(output.unwrap_or_else(|| input.with_extension("mpk")))?;
 
-    // Create an output file.
-    let mut out_file = File::create(
-        opt.output
-            .unwrap_or_else(|| input_path.with_extension("mpk")),
-    )?;
-
-    // serialize summary data to the output file in the MessagePack format.
-    let mut se = rmps::encode::Serializer::new(&mut out_file)
-        .with_struct_map()
-        .with_string_variants();
-    summary.serialize(&mut se)?;
-
+            // serialize summary data to the output file in the MessagePack format.
+            let mut se = rmps::encode::Serializer::new(&mut out_file)
+                .with_struct_map()
+                .with_string_variants();
+            summary.serialize(&mut se)?;
+        }
+        Opt::Diff {
+            input,
+            reference,
+            output,
+        } => {
+            println!("Diff subcommand is presently unsupported...");
+        }
+    }
     Ok(())
 }
