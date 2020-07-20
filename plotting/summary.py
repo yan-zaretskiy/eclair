@@ -2,7 +2,6 @@ import datetime
 
 import msgpack
 import numpy as np
-
 from traits.api import (
     Array,
     cached_property,
@@ -79,8 +78,15 @@ class Summary(HasTraits):
 def decode_start_date(obj):
     if "start_date" in obj:
         dt = obj["start_date"]
+        second, microsecond = dt[5] // 1_000_000, dt[5] % 1_000_000
         obj["start_date"] = np.datetime64(
-            datetime.datetime(*dt[2::-1], hour=dt[3], minute=dt[4], microsecond=dt[5])
+            datetime.datetime(
+                *dt[2::-1],
+                hour=dt[3],
+                minute=dt[4],
+                second=second,
+                microsecond=microsecond,
+            )
         )
     return obj
 
