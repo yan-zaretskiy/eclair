@@ -1,12 +1,12 @@
-use eclair::eclipse_summary::Summary;
+use std::{fs::File, io::Write, path::PathBuf};
 
 use anyhow as ah;
 use env_logger::{Builder, Env};
 use rmp_serde as rmps;
+use serde::Serialize;
 use structopt::StructOpt;
 
-use serde::Serialize;
-use std::{fs::File, io::Write, path::PathBuf};
+use eclair::{diff::diff, summary::Summary};
 
 #[derive(StructOpt)]
 #[structopt(
@@ -85,7 +85,10 @@ fn main() -> ah::Result<()> {
             reference,
             output,
         } => {
-            println!("Diff subcommand is presently unsupported...");
+            // Parse SMSPEC & UNSMRY files.
+            let candidate = Summary::from_path(&input)?;
+            let reference = Summary::from_path(&reference)?;
+            diff(&candidate, &reference);
         }
     }
     Ok(())

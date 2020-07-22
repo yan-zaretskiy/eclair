@@ -124,39 +124,42 @@ def extract_summary(file_or_bytes):
 
     for item in unpacked["items"]:
         item_id = item["id"]
-        kind = item_id["kind"]
+        name = item_id["name"]
+        kind = item_id["qualifier"]["kind"]
+        location = item_id["qualifier"].get("location")
+        index = item_id["qualifier"].get("index")
         data = SummaryRecord(unit=item["unit"], values=item["values"])
 
         # global
         if kind == "time":
-            summary.time[item_id["name"]] = data
+            summary.time[name] = data
         elif kind == "performance":
-            summary.performance[item_id["name"]] = data
+            summary.performance[name] = data
         elif kind == "field":
-            summary.field[item_id["name"]] = data
+            summary.field[name] = data
 
         # index-based
         elif kind == "aquifer":
-            summary.aquifers[(item_id["name"], item_id["index"])] = data
+            summary.aquifers[(name, index)] = data
         elif kind == "region":
-            summary.regions[(item_id["name"], item_id["index"])] = data
+            summary.regions[(name, index)] = data
         elif kind == "block":
-            summary.blocks[(item_id["name"], item_id["index"])] = data
+            summary.blocks[(name, index)] = data
 
         # location-based
         elif kind == "well":
-            summary.wells[(item_id["name"], item_id["location"])] = data
+            summary.wells[(name, location)] = data
         elif kind == "group":
-            summary.groups[(item_id["name"], item_id["location"])] = data
+            summary.groups[(name, location)] = data
 
         # cross-region and well completion
         elif kind == "completion":
             summary.completions[
-                (item_id["name"], (item_id["location"], item_id["index"]))
+                (name, (location, index))
             ] = data
         elif kind == "cross_region_flow":
             summary.cross_region_flows[
-                (item_id["name"], (item_id["from"], item_id["to"]))
+                (name, (item_id["qualifier"]["from"], item_id["qualifier"]["to"]))
             ] = data
 
     return summary

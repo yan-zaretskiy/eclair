@@ -1,16 +1,17 @@
-use crate::eclipse_binary::{for_keyword_in, BinFile, BinRecord, FlexString};
-use crate::errors::{FileError, SummaryError};
-
-use anyhow::{self as ah, Context};
-use once_cell::sync::Lazy;
-use serde::Serialize;
-
 use std::{
     collections::{HashMap, HashSet},
     fs::File,
     io::{BufReader, Read},
     path::Path,
 };
+
+use anyhow::{self as ah, Context};
+use once_cell::sync::Lazy;
+use serde::Serialize;
+
+use crate::binary::{BinFile, BinRecord, FlexString};
+use crate::errors::{FileError, SummaryError};
+use crate::summary_item::{ItemQualifier, SummaryItem};
 
 static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     let mut s = HashSet::new();
@@ -67,73 +68,12 @@ struct Smspec {
 #[derive(Debug, Default)]
 struct Unsmry(Vec<Vec<u8>>);
 
-/// An item identifier derived from SMSPEC metadata.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "snake_case", tag = "kind")]
-enum ItemId {
-    Time {
-        name: FlexString,
-    },
-    Performance {
-        name: FlexString,
-    },
-    Field {
-        name: FlexString,
-    },
-    Aquifer {
-        name: FlexString,
-        index: i32,
-    },
-    Region {
-        name: FlexString,
-        index: i32,
-    },
-    CrossRegionFlow {
-        name: FlexString,
-        from: i32,
-        to: i32,
-    },
-    Well {
-        name: FlexString,
-        location: FlexString,
-    },
-    Completion {
-        name: FlexString,
-        location: FlexString,
-        index: i32,
-    },
-    Group {
-        name: FlexString,
-        location: FlexString,
-    },
-    Block {
-        name: FlexString,
-        index: i32,
-    },
-    Unsupported {
-        name: FlexString,
-        location: FlexString,
-        index: i32,
-    },
-}
-
-const VEC_EXT_CODE: i8 = 2;
-
-#[derive(Debug, Serialize)]
-#[serde(rename = "_ExtStruct")]
-struct ExtVec((i8, serde_bytes::ByteBuf));
-
-/// Individual summary item with data combined from both SMSPEC and UNSMRY files.
-#[derive(Debug, Serialize)]
-struct SummaryItem {
-    id: ItemId,
-    unit: FlexString,
-    values: ExtVec,
-}
-
-/// The return type for parsing of SMSPEC+UNSMRY files.
+/// Accumulation of data from both SMSPEC & UNSMRY files.
 #[derive(Debug, Serialize)]
 pub struct Summary {
+    /// SMSPEC/UNSMRY filename
+    pub name: String,
+
     /// Unit system for a simulation
     #[serde(skip_serializing_if = "Option::is_none")]
     units_system: Option<i32>,
@@ -142,18 +82,18 @@ pub struct Summary {
     #[serde(skip_serializing_if = "Option::is_none")]
     simulator_id: Option<i32>,
 
-    /// Grid dimensions of a simulation
-    dims: [i32; 3],
-
-    /// Simulation start date
-    start_date: [i32; 6],
-
     /// Region names
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     region_names: HashMap<i32, FlexString>,
 
+    /// Grid dimensions of a simulation
+    pub dims: [i32; 3],
+
+    /// Simulation start date
+    pub start_date: [i32; 6],
+
     /// Simulation data
-    items: Vec<SummaryItem>,
+    pub items: Vec<SummaryItem>,
 }
 
 impl Smspec {
@@ -164,7 +104,7 @@ impl Smspec {
         let mut smspec: Self = Default::default();
 
         // Parse the SMSPEC file for enough metadata to correctly place data records
-        for_keyword_in(smspec_file, |kw| {
+        smspec_file.for_each_kw(|kw| {
             match (kw.name.as_str(), kw.data) {
                 // This keyword is optional
                 ("INTEHEAD", BinRecord::Int(header)) => {
@@ -235,12 +175,12 @@ impl Unsmry {
         let mut unsmry = Unsmry(vec![Default::default(); nlist as usize]);
 
         // Read data from the UNSMRY file
-        for_keyword_in(unsmry_file, |kw| {
+        unsmry_file.for_each_kw(|kw| {
             if let ("PARAMS", BinRecord::F32Bytes(params)) = (kw.name.as_str(), kw.data) {
                 for (values, param) in unsmry
                     .0
                     .iter_mut()
-                    .zip(params.chunks(std::mem::size_of::<f32>()))
+                    .zip(params.chunks_exact(std::mem::size_of::<f32>()))
                 {
                     values.extend_from_slice(param)
                 }
@@ -252,7 +192,7 @@ impl Unsmry {
 }
 
 impl Summary {
-    pub fn new<R1, R2>(smspec: R1, unsmry: R2) -> ah::Result<Self>
+    pub fn new<R1, R2>(name: &str, smspec: R1, unsmry: R2) -> ah::Result<Self>
     where
         R1: Read,
         R2: Read,
@@ -261,6 +201,7 @@ impl Summary {
         let unsmry = Unsmry::new(BinFile::new(unsmry), smspec.nlist)?;
 
         let mut summary = Summary {
+            name: name.to_owned(),
             start_date: smspec.start_date,
             units_system: smspec.units_system,
             simulator_id: smspec.simulator_id,
@@ -276,21 +217,17 @@ impl Summary {
             let num_valid = item.index > 0;
 
             let id = if TIMING_KEYWORDS.contains(name.as_str()) {
-                ItemId::Time { name }
+                ItemQualifier::Time
             } else if PERFORMANCE_KEYWORDS.contains(name.as_str()) {
-                ItemId::Performance { name }
+                ItemQualifier::Performance
             } else {
                 match name.as_bytes() {
-                    [b'F', ..] => ItemId::Field { name },
-                    [b'A', ..] if num_valid => ItemId::Aquifer {
-                        name,
-                        index: item.index,
-                    },
+                    [b'F', ..] => ItemQualifier::Field,
+                    [b'A', ..] if num_valid => ItemQualifier::Aquifer { index: item.index },
                     [b'R', b'N', b'L', b'F', ..] | [b'R', _, b'F', ..] if num_valid => {
                         let region2 = item.index / 32768 as i32 - 10;
                         let region1 = item.index - 32768 * (region2 + 10);
-                        ItemId::CrossRegionFlow {
-                            name,
+                        ItemQualifier::CrossRegionFlow {
                             from: region1,
                             to: region2,
                         }
@@ -299,57 +236,49 @@ impl Summary {
                         if wg_valid {
                             summary.region_names.insert(item.index, item.wg_name);
                         }
-                        ItemId::Region {
-                            name,
-                            index: item.index,
-                        }
+                        ItemQualifier::Region { index: item.index }
                     }
-                    [b'W', ..] if wg_valid => ItemId::Well {
-                        name,
+                    [b'W', ..] if wg_valid => ItemQualifier::Well {
                         location: item.wg_name,
                     },
-                    [b'C', ..] if wg_valid && num_valid => ItemId::Completion {
-                        name,
+                    [b'C', ..] if wg_valid && num_valid => ItemQualifier::Completion {
                         location: item.wg_name,
                         index: item.index,
                     },
-                    [b'G', ..] if wg_valid => ItemId::Group {
-                        name,
+                    [b'G', ..] if wg_valid => ItemQualifier::Group {
                         location: item.wg_name,
                     },
-                    [b'B', ..] if num_valid => ItemId::Block {
-                        name,
-                        index: item.index,
-                    },
+                    [b'B', ..] if num_valid => ItemQualifier::Block { index: item.index },
                     _ => {
                         log::debug!(target: "Building Summary",
                             "Skipped a summary item. KEYWORD: {}, WGNAME: {}, NUM: {}",
                             name, item.wg_name, item.index
                         );
-                        ItemId::Unsupported {
-                            name,
+                        ItemQualifier::Unrecognized {
                             location: item.wg_name,
                             index: item.index,
                         }
                     }
                 }
             };
-
-            summary.items.push(SummaryItem {
-                id,
-                unit: item.unit,
-                values: ExtVec((VEC_EXT_CODE, serde_bytes::ByteBuf::from(values))),
-            });
+            summary.add(name, id, item.unit, values);
         }
         Ok(summary)
+    }
+
+    fn add(&mut self, name: FlexString, kind: ItemQualifier, unit: FlexString, values: Vec<u8>) {
+        self.items.push(SummaryItem::new(name, kind, unit, values))
     }
 
     pub fn from_path<P: AsRef<Path>>(input_path: P) -> ah::Result<Self> {
         // If there is no stem, bail early
         let input_path = input_path.as_ref();
-        if input_path.file_stem().is_none() {
+
+        let stem = input_path.file_stem();
+        if stem.is_none() || stem.unwrap().to_str().is_none() {
             return Err(FileError::InvalidFilePath.into());
         }
+        let stem = stem.unwrap().to_str().unwrap();
 
         // we allow either extension or no extension at all
         if let Some(ext) = input_path.extension() {
@@ -368,6 +297,6 @@ impl Summary {
         let smspec = open_file(input_path.with_extension("SMSPEC"))?;
         let unsmry = open_file(input_path.with_extension("UNSMRY"))?;
 
-        Summary::new(smspec, unsmry)
+        Summary::new(stem, smspec, unsmry)
     }
 }

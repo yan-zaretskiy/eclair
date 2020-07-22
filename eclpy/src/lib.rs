@@ -1,4 +1,4 @@
-use eclair::eclipse_summary::Summary;
+use eclair::summary::Summary;
 
 use pyo3::exceptions;
 use pyo3::prelude::*;
