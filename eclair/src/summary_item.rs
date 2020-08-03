@@ -8,14 +8,14 @@ use crate::binary_parsing::{read_f32, read_f64};
 const VEC_EXT_CODE: i8 = 2;
 
 /// An item identifier derived from SMSPEC metadata.
-#[derive(Debug, Eq, Hash, PartialEq, Serialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Ord, PartialOrd)]
 #[serde(rename_all = "snake_case")]
 pub struct ItemId {
     pub name: FlexString,
     pub qualifier: ItemQualifier,
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, Serialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Ord, PartialOrd)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum ItemQualifier {
     Time,
