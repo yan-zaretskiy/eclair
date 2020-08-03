@@ -88,7 +88,7 @@ fn main() -> ah::Result<()> {
             // Parse SMSPEC & UNSMRY files.
             let candidate = Summary::from_path(&input)?;
             let reference = Summary::from_path(&reference)?;
-            diff(&candidate, &reference);
+            diff(&candidate, &reference, output);
         }
     }
     Ok(())

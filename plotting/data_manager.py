@@ -41,12 +41,6 @@ class DataManager(HasTraits):
         """Return all loaded summary names."""
         return list(self.summary_data.keys())
 
-    def unload_summary(self, names):
-        """Delete unnecessary data."""
-        for n in names:
-            del self.summary_data[n]
-            del self.dates[n]
-
     def common_keys(self):
         """Keys common to all selected summaries."""
         names = self.selected_names

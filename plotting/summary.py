@@ -123,11 +123,11 @@ def extract_summary(file_or_bytes):
         summary.region_names = unpacked["region_names"]
 
     for item in unpacked["items"]:
-        item_id = item["id"]
-        name = item_id["name"]
-        kind = item_id["qualifier"]["kind"]
-        location = item_id["qualifier"].get("location")
-        index = item_id["qualifier"].get("index")
+        name = item["id"]["name"]
+        qualifier = item["id"]["qualifier"]
+        kind = qualifier["kind"]
+        location = qualifier.get("location")
+        index = qualifier.get("index")
         data = SummaryRecord(unit=item["unit"], values=item["values"])
 
         # global
@@ -159,7 +159,7 @@ def extract_summary(file_or_bytes):
             ] = data
         elif kind == "cross_region_flow":
             summary.cross_region_flows[
-                (name, (item_id["qualifier"]["from"], item_id["qualifier"]["to"]))
+                (name, (qualifier["from"], qualifier["to"]))
             ] = data
 
     return summary
