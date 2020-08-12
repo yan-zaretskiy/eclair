@@ -108,12 +108,12 @@ impl Smspec {
             match (kw.name.as_str(), kw.data) {
                 // This keyword is optional
                 ("INTEHEAD", BinRecord::Int(header)) => {
-                    log::trace!(target: "Parsing SMSPEC", "INTEHEAD: {:?}", header);
+                    log::trace!(target: "Parsing SMSPEC", "INTEHEAD: {:#?}", header);
                     smspec.units_system = Some(header[0]);
                     smspec.simulator_id = Some(header[1]);
                 }
                 ("DIMENS", BinRecord::Int(dimens)) => {
-                    log::trace!(target: "Parsing SMSPEC", "DIMENS: {:?}", dimens);
+                    log::trace!(target: "Parsing SMSPEC", "DIMENS: {:#?}", dimens);
                     smspec.nlist = dimens[0];
                     smspec
                         .items
@@ -121,7 +121,7 @@ impl Smspec {
                     smspec.dims.copy_from_slice(&dimens[1..4]);
                 }
                 ("STARTDAT", BinRecord::Int(start_dat)) => {
-                    log::trace!(target: "Parsing SMSPEC", "STARTDAT: {:?}", start_dat);
+                    log::trace!(target: "Parsing SMSPEC", "STARTDAT: {:#?}", start_dat);
                     if start_dat.len() == 3 {
                         smspec.start_date[..3].copy_from_slice(&start_dat);
                     } else if start_dat.len() == 6 {
@@ -131,33 +131,33 @@ impl Smspec {
                     }
                 }
                 ("KEYWORDS", BinRecord::Chars(keywords)) => {
-                    log::trace!(target: "Parsing SMSPEC", "KEYWORDS: {:?}", keywords);
+                    log::trace!(target: "Parsing SMSPEC", "KEYWORDS: {:#?}", keywords);
                     for (item, kw_name) in smspec.items.iter_mut().zip(keywords) {
                         item.name = kw_name;
                     }
                 }
                 (kw @ "WGNAMES", BinRecord::Chars(wg_names))
                 | (kw @ "NAMES", BinRecord::Chars(wg_names)) => {
-                    log::trace!(target: "Parsing SMSPEC", "{}: {:?}", kw, wg_names);
+                    log::trace!(target: "Parsing SMSPEC", "{}: {:#?}", kw, wg_names);
                     for (item, wg_name) in smspec.items.iter_mut().zip(wg_names) {
                         item.wg_name = wg_name;
                     }
                 }
                 ("NUMS", BinRecord::Int(nums)) => {
-                    log::trace!(target: "Parsing SMSPEC", "NUMS: {:?}", nums);
+                    log::trace!(target: "Parsing SMSPEC", "NUMS: {:#?}", nums);
                     for (item, num) in smspec.items.iter_mut().zip(nums) {
                         item.index = num;
                     }
                 }
                 ("UNITS", BinRecord::Chars(units)) => {
-                    log::trace!(target: "Parsing SMSPEC", "UNITS: {:?}", units);
+                    log::trace!(target: "Parsing SMSPEC", "UNITS: {:#?}", units);
                     for (item, unit) in smspec.items.iter_mut().zip(units) {
                         item.unit = unit;
                     }
                 }
                 (name, data) => {
                     if kw.name.as_str() != "MEASRMNT" {
-                        log::debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword, name: {}, data: {:?}", name, data);
+                        log::debug!(target: "Parsing SMSPEC", "Unsupported SMSPEC keyword, name: {}, data: {:#?}", name, data);
                     }
                 }
             }

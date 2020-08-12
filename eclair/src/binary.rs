@@ -1,7 +1,9 @@
 use std::{
     cmp::min,
     convert::TryInto,
-    io::{self, Read},
+    fs::File,
+    io::{self, BufReader, Read},
+    path::Path,
     str,
 };
 
@@ -146,6 +148,17 @@ where
             }
         }
         Ok(())
+    }
+}
+
+impl BinFile<BufReader<File>> {
+    /// Create a BinFile object from a file path
+    pub fn from_path<P: AsRef<Path>>(input_path: P) -> ah::Result<Self> {
+        let reader = BufReader::new(
+            File::open(input_path)
+                .with_context(|| "Failed to open a file at the requested path")?,
+        );
+        Ok(Self { reader })
     }
 }
 

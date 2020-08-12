@@ -6,7 +6,7 @@ use rmp_serde as rmps;
 use serde::Serialize;
 use structopt::StructOpt;
 
-use eclair::{diff::diff, summary::Summary};
+use eclair::{binary::BinFile, diff::diff, print::print, summary::Summary};
 
 #[derive(StructOpt)]
 #[structopt(
@@ -38,6 +38,12 @@ enum Opt {
         /// Output HTML file
         #[structopt(parse(from_os_str), short, long)]
         output: Option<PathBuf>,
+    },
+    /// Print contents of an Eclipse binary file
+    Print {
+        /// Input file
+        #[structopt(parse(from_os_str))]
+        input: PathBuf,
     },
 }
 
@@ -89,6 +95,10 @@ fn main() -> ah::Result<()> {
             let candidate = Summary::from_path(&input)?;
             let reference = Summary::from_path(&reference)?;
             diff(&candidate, &reference, output);
+        }
+        Opt::Print { input } => {
+            let bin_file = BinFile::from_path(&input)?;
+            print(bin_file)?;
         }
     }
     Ok(())
