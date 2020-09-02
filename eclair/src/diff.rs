@@ -1,16 +1,18 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs::File;
-use std::io::prelude::*;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs::File,
+    io::prelude::*,
+    path::Path,
+};
 
 use askama::Template;
-use chrono::Duration;
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use itertools::EitherOrBoth;
-use itertools::Itertools;
+use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
+use itertools::{EitherOrBoth, Itertools};
 
-use crate::summary::Summary;
-use crate::summary_item::{ItemId, ItemQualifier};
-use std::path::PathBuf;
+use crate::{
+    summary::Summary,
+    summary_item::{ItemId, ItemQualifier},
+};
 
 type Merged = Vec<EitherOrBoth<(usize, i64), (usize, i64)>>;
 
@@ -146,7 +148,7 @@ fn extract_time_and_data(summary: &Summary) -> (Vec<i64>, BTreeMap<&ItemId, usiz
     (times, data_item_map)
 }
 
-pub fn diff(candidate: &Summary, reference: &Summary, output: Option<PathBuf>) {
+pub fn diff<P: AsRef<Path>>(candidate: &Summary, reference: &Summary, output: Option<P>) {
     let (candidate_times, candidate_data_map) = extract_time_and_data(&candidate);
     let (reference_times, reference_data_map) = extract_time_and_data(&reference);
 
@@ -164,19 +166,13 @@ pub fn diff(candidate: &Summary, reference: &Summary, output: Option<PathBuf>) {
         let candidate_data = candidate.items[index].as_vec_of_f32();
 
         let index = reference_data_map[key];
-        let reference_data = reference.items[index].as_vec_of_f32();
+        let ref_item = &reference.items[index];
+        let reference_data = ref_item.as_vec_of_f32();
 
         let padded_data = pad_data(&merged_time, &candidate_data, &reference_data);
 
-        let id = &reference.items[index].id;
-
-        let title = if let Some(loc) = id.location() {
-            format!("{} @ {}", id.name, loc)
-        } else {
-            id.name.to_string()
-        };
-
-        let y_title = format!("{} [{}]", id.name, reference.items[index].unit);
+        let title = ref_item.full_name();
+        let y_title = format!("{} [{}]", ref_item.id.name, ref_item.unit);
 
         common_plots.push(UPlotChart::new(&merged_time, padded_data, title, y_title));
     }

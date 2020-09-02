@@ -99,4 +99,12 @@ impl SummaryItem {
         self.values.
         0.1[..].chunks_exact(mem::size_of::<f64>()).map(|chunk| read_f64(chunk)).collect()
     }
+
+    pub fn full_name(&self) -> String {
+        if let Some(loc) = self.id.location() {
+            format!("{} @ {}", self.id.name, loc)
+        } else {
+            self.id.name.to_string()
+        }
+    }
 }

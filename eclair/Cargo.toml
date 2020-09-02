@@ -16,6 +16,7 @@ bin = ["env_logger", "rmp", "rmp-serde", "structopt"]
 anyhow = "1.0"
 askama = "0.10"
 chrono = "0.4"
+csv = "1.1"
 env_logger = { version = "0.7", optional = true }
 itertools = "0.9"
 log = "0.4"

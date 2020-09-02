@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write, path::PathBuf};
+use eclair::{binary::BinFile, diff::diff, dump::dump, summary::Summary, to_csv::to_csv_from_path};
 
 use anyhow as ah;
 use env_logger::{Builder, Env};
@@ -6,7 +6,7 @@ use rmp_serde as rmps;
 use serde::Serialize;
 use structopt::StructOpt;
 
-use eclair::{binary::BinFile, diff::diff, print::print, summary::Summary};
+use std::{fs::File, io::Write, path::PathBuf};
 
 #[derive(StructOpt)]
 #[structopt(
@@ -16,7 +16,7 @@ use eclair::{binary::BinFile, diff::diff, print::print, summary::Summary};
 )]
 enum Opt {
     /// Convert an Eclipse summary file to MessagePack format
-    Convert {
+    ToMpk {
         /// Input summary file
         #[structopt(parse(from_os_str))]
         input: PathBuf,
@@ -24,6 +24,12 @@ enum Opt {
         /// Output MessagePack file
         #[structopt(parse(from_os_str), short, long)]
         output: Option<PathBuf>,
+    },
+    /// Print Eclipse summary file in CSV format
+    ToCsv {
+        /// Input summary file
+        #[structopt(parse(from_os_str))]
+        input: PathBuf,
     },
     /// Compare two Eclipse summary files
     Diff {
@@ -39,8 +45,8 @@ enum Opt {
         #[structopt(parse(from_os_str), short, long)]
         output: Option<PathBuf>,
     },
-    /// Print contents of an Eclipse binary file
-    Print {
+    /// Dump raw contents of an Eclipse binary file
+    Dump {
         /// Input file
         #[structopt(parse(from_os_str))]
         input: PathBuf,
@@ -74,7 +80,7 @@ fn main() -> ah::Result<()> {
     let opt = Opt::from_args();
 
     match opt {
-        Opt::Convert { input, output } => {
+        Opt::ToMpk { input, output } => {
             // Parse SMSPEC & UNSMRY files.
             let summary = Summary::from_path(&input)?;
             // Create an output file.
@@ -94,11 +100,14 @@ fn main() -> ah::Result<()> {
             // Parse SMSPEC & UNSMRY files.
             let candidate = Summary::from_path(&input)?;
             let reference = Summary::from_path(&reference)?;
-            diff(&candidate, &reference, output);
+            diff(&candidate, &reference, output.as_ref());
         }
-        Opt::Print { input } => {
+        Opt::Dump { input } => {
             let bin_file = BinFile::from_path(&input)?;
-            print(bin_file)?;
+            dump(bin_file)?;
+        }
+        Opt::ToCsv { input } => {
+            to_csv_from_path(&input)?;
         }
     }
     Ok(())

@@ -2,10 +2,12 @@ use std::{io::Read, mem};
 
 use anyhow as ah;
 
-use crate::binary::{BinFile, BinRecord};
-use crate::binary_parsing::{read_f32, read_f64};
+use crate::{
+    binary::{BinFile, BinRecord},
+    binary_parsing::{read_f32, read_f64},
+};
 
-pub fn print<R>(bin_file: BinFile<R>) -> ah::Result<()>
+pub fn dump<R>(bin_file: BinFile<R>) -> ah::Result<()>
 where
     R: Read,
 {

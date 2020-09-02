@@ -11,8 +11,7 @@ use anyhow as ah;
 use anyhow::Context;
 use smallstr::SmallString;
 
-use crate::binary_parsing as bp;
-use crate::errors::BinaryError;
+use crate::{binary_parsing as bp, errors::BinaryError};
 
 pub type FlexString = SmallString<[u8; 8]>;
 

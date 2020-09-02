@@ -9,9 +9,11 @@ use anyhow::{self as ah, Context};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 
-use crate::binary::{BinFile, BinRecord, FlexString};
-use crate::errors::{FileError, SummaryError};
-use crate::summary_item::{ItemQualifier, SummaryItem};
+use crate::{
+    binary::{BinFile, BinRecord, FlexString},
+    errors::{FileError, SummaryError},
+    summary_item::{ItemQualifier, SummaryItem},
+};
 
 static TIMING_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     let mut s = HashSet::new();
@@ -43,25 +45,25 @@ static PERFORMANCE_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
 
 /// Raw metadata we collect for each time series.
 #[derive(Debug, Default)]
-struct SmspecItem {
-    name: FlexString,
-    wg_name: FlexString,
-    index: i32,
-    unit: FlexString,
+pub struct SmspecItem {
+    pub name: FlexString,
+    pub wg_name: FlexString,
+    pub index: i32,
+    pub unit: FlexString,
 }
 
 /// Contents of an SMSPEC file. Note that we don't extract everything, only those bits
 /// that are presently relevant to us. Notably, there is no data related to LGRs.
 /// This type could be extended later.
 #[derive(Debug, Default)]
-struct Smspec {
+pub struct Smspec {
     units_system: Option<i32>,
     simulator_id: Option<i32>,
     nlist: i32,
     dims: [i32; 3],
     start_date: [i32; 6],
 
-    items: Vec<SmspecItem>,
+    pub(crate) items: Vec<SmspecItem>,
 }
 
 /// Contents of an UNSMRY file stored as raw bytes.
@@ -97,7 +99,7 @@ pub struct Summary {
 }
 
 impl Smspec {
-    fn new<R>(smspec_file: BinFile<R>) -> ah::Result<Self>
+    pub(crate) fn new<R>(smspec_file: BinFile<R>) -> ah::Result<Self>
     where
         R: Read,
     {
@@ -168,7 +170,7 @@ impl Smspec {
 }
 
 impl Unsmry {
-    fn new<R>(unsmry_file: BinFile<R>, nlist: i32) -> ah::Result<Self>
+    pub(crate) fn new<R>(unsmry_file: BinFile<R>, nlist: i32) -> ah::Result<Self>
     where
         R: Read,
     {
@@ -189,6 +191,37 @@ impl Unsmry {
         })?;
         Ok(unsmry)
     }
+}
+
+pub fn files_from_path<P>(input_path: P) -> ah::Result<(BufReader<File>, BufReader<File>)>
+where
+    P: AsRef<Path>,
+{
+    // If there is no stem, bail early
+    let input_path = input_path.as_ref();
+
+    let stem = input_path.file_stem();
+    if stem.is_none() || stem.unwrap().to_str().is_none() {
+        return Err(FileError::InvalidFilePath.into());
+    }
+
+    // we allow either extension or no extension at all
+    if let Some(ext) = input_path.extension() {
+        let ext = ext.to_str();
+        if ext != Some("SMSPEC") && ext != Some("UNSMRY") {
+            return Err(FileError::InvalidFileExt.into());
+        }
+    }
+
+    let open_file = |path| -> ah::Result<_> {
+        Ok(BufReader::new(File::open(path).with_context(|| {
+            "Failed to open a file at the requested path"
+        })?))
+    };
+
+    let smspec = open_file(input_path.with_extension("SMSPEC"))?;
+    let unsmry = open_file(input_path.with_extension("UNSMRY"))?;
+    Ok((smspec, unsmry))
 }
 
 impl Summary {
@@ -271,31 +304,10 @@ impl Summary {
     }
 
     pub fn from_path<P: AsRef<Path>>(input_path: P) -> ah::Result<Self> {
-        // If there is no stem, bail early
-        let input_path = input_path.as_ref();
+        let (smspec, unsmry) = files_from_path(&input_path)?;
 
-        let stem = input_path.file_stem();
-        if stem.is_none() || stem.unwrap().to_str().is_none() {
-            return Err(FileError::InvalidFilePath.into());
-        }
-        let stem = stem.unwrap().to_str().unwrap();
-
-        // we allow either extension or no extension at all
-        if let Some(ext) = input_path.extension() {
-            let ext = ext.to_str();
-            if ext != Some("SMSPEC") && ext != Some("UNSMRY") {
-                return Err(FileError::InvalidFileExt.into());
-            }
-        }
-
-        let open_file = |path| -> ah::Result<_> {
-            Ok(BufReader::new(File::open(path).with_context(|| {
-                "Failed to open a file at the requested path"
-            })?))
-        };
-
-        let smspec = open_file(input_path.with_extension("SMSPEC"))?;
-        let unsmry = open_file(input_path.with_extension("UNSMRY"))?;
+        // at this point we know we won't panic here
+        let stem = input_path.as_ref().file_stem().unwrap().to_str().unwrap();
 
         Summary::new(stem, smspec, unsmry)
     }
