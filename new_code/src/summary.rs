@@ -304,152 +304,60 @@ impl TryFrom<SmspecRecords> for Summary {
     // FIXME: There has to be a more intelligent way to validate these records. Macros?
     fn try_from(mut value: SmspecRecords) -> Result<Self> {
         use EclairError::*;
-        use RecordData::*;
 
-        // 1. DIMENS precedes any other record whose size is specified by DIMENS's first element.
-        let dimens = value.records.remove("DIMENS").unwrap();
-        let dimens = if let Some(data) = dimens {
-            if let Int(values) = data {
-                if values.len() == 6 {
-                    values
-                } else {
-                    return Err(UnexpectedRecordDataLength {
-                        name: "DIMENS".to_string(),
-                        expected: 6,
+        macro_rules! extract_and_validate {
+            ($field_name: literal, $type_pattern: ident, $serialized_type_tag: literal, $($valid_len: expr),+ $(,)?) => {
+                loop {
+                    use std::cmp::Ordering;
+
+                    let field_data = value
+                        .records
+                        .remove($field_name)
+                        .unwrap()
+                        .ok_or_else(|| EclairError::MissingRecord($field_name.to_string()))?;
+
+                    let values = if let RecordData::$type_pattern(values) = field_data {
+                        values
+                    } else {
+                        return Err(InvalidRecordDataType {
+                            name: $field_name.to_string(),
+                            // TODO(erichdongubler): make a record-type-only `enum` so you can just
+                            // plug it in here.
+                            expected: $serialized_type_tag.to_string(),
+                            found: field_data.type_string(),
+                        });
+                    };
+
+                    let len_err = |expected| Err(UnexpectedRecordDataLength {
+                        name: $field_name.to_string(),
+                        expected,
                         found: values.len(),
                     });
+
+                    let expected_len = 0;
+                    $(
+                        drop(expected_len);
+                        let expected_len = $valid_len;
+                        match values.len().cmp(&$valid_len) {
+                            Ordering::Less => return len_err($valid_len),
+                            Ordering::Equal => break values,
+                            Ordering::Greater => (),
+                        };
+                    )+
+
+                    return len_err(expected_len);
                 }
-            } else {
-                return Err(InvalidRecordDataType {
-                    name: "DIMENS".to_string(),
-                    expected: "INTE".to_string(),
-                    found: data.type_string(),
-                });
-            }
-        } else {
-            return Err(EclairError::MissingRecord("DIMENS".to_string()));
-        };
+            };
+        }
+
+        let dimens = extract_and_validate!("DIMENS", Int, "INTE", 6);
         let nlist = dimens[0] as usize;
 
-        // 2. STARTDAT is either 3 or 6 elements long.
-        let start_dat = value.records.remove("STARTDAT").unwrap();
-        let start_dat = if let Some(data) = start_dat {
-            if let Int(values) = data {
-                if values.len() == 3 || values.len() == 6 {
-                    values
-                } else {
-                    return Err(UnexpectedRecordDataLength {
-                        name: "STARTDAT".to_string(),
-                        expected: if values.len() < 3 { 3 } else { 6 },
-                        found: values.len(),
-                    });
-                }
-            } else {
-                return Err(InvalidRecordDataType {
-                    name: "STARTDAT".to_string(),
-                    expected: "INTE".to_string(),
-                    found: data.type_string(),
-                });
-            }
-        } else {
-            return Err(EclairError::MissingRecord("STARTDAT".to_string()));
-        };
-
-        // 3. KEYWORDS and the rest of the records must be nlist long.
-        let keywords = value.records.remove("KEYWORDS").unwrap();
-        let keywords = if let Some(data) = keywords {
-            if let Chars(values) = data {
-                if values.len() == nlist {
-                    values
-                } else {
-                    return Err(UnexpectedRecordDataLength {
-                        name: "KEYWORDS".to_string(),
-                        expected: nlist,
-                        found: values.len(),
-                    });
-                }
-            } else {
-                return Err(InvalidRecordDataType {
-                    name: "KEYWORDS".to_string(),
-                    expected: "CHAR".to_string(),
-                    found: data.type_string(),
-                });
-            }
-        } else {
-            return Err(EclairError::MissingRecord("KEYWORDS".to_string()));
-        };
-
-        // 4. WGNAMES
-        let wg_names = value.records.remove("WGNAMES").unwrap();
-        let wg_names = if let Some(data) = wg_names {
-            if let Chars(values) = data {
-                if values.len() == nlist {
-                    values
-                } else {
-                    return Err(UnexpectedRecordDataLength {
-                        name: "WGNAMES".to_string(),
-                        expected: nlist,
-                        found: values.len(),
-                    });
-                }
-            } else {
-                return Err(InvalidRecordDataType {
-                    name: "WGNAMES".to_string(),
-                    expected: "CHAR".to_string(),
-                    found: data.type_string(),
-                });
-            }
-        } else {
-            return Err(EclairError::MissingRecord("WGNAMES".to_string()));
-        };
-
-        // 5. NUMS
-        let nums = value.records.remove("NUMS").unwrap();
-        let nums = if let Some(data) = nums {
-            if let Int(values) = data {
-                if values.len() == nlist {
-                    values
-                } else {
-                    return Err(UnexpectedRecordDataLength {
-                        name: "NUMS".to_string(),
-                        expected: nlist,
-                        found: values.len(),
-                    });
-                }
-            } else {
-                return Err(InvalidRecordDataType {
-                    name: "NUMS".to_string(),
-                    expected: "CHAR".to_string(),
-                    found: data.type_string(),
-                });
-            }
-        } else {
-            return Err(EclairError::MissingRecord("NUMS".to_string()));
-        };
-
-        // 6. UNITS
-        let units = value.records.remove("UNITS").unwrap();
-        let units = if let Some(data) = units {
-            if let Chars(values) = data {
-                if values.len() == nlist {
-                    values
-                } else {
-                    return Err(UnexpectedRecordDataLength {
-                        name: "UNITS".to_string(),
-                        expected: nlist,
-                        found: values.len(),
-                    });
-                }
-            } else {
-                return Err(InvalidRecordDataType {
-                    name: "UNITS".to_string(),
-                    expected: "CHAR".to_string(),
-                    found: data.type_string(),
-                });
-            }
-        } else {
-            return Err(EclairError::MissingRecord("UNITS".to_string()));
-        };
+        let start_dat = extract_and_validate!("STARTDAT", Int, "INTE", 3, 6);
+        let keywords = extract_and_validate!("KEYWORDS", Chars, "CHAR", nlist);
+        let wg_names = extract_and_validate!("WGNAMES", Chars, "CHAR", nlist);
+        let nums = extract_and_validate!("NUMS", Int, "INTE", nlist);
+        let units = extract_and_validate!("UNITS", Chars, "CHAR", nlist);
 
         // Now we prepare to construct the Summary object.
         let dims = dimens[1..4].try_into().unwrap();
