@@ -44,10 +44,9 @@ use std::{
 use itertools::multizip;
 use once_cell::sync::Lazy;
 
-use crate::records::ReadRecord;
 use crate::{
     error::EclairError,
-    records::{Record, RecordData, RecordDataKind},
+    records::{ReadRecord, Record, RecordData, RecordDataKind},
     FlexString, Result,
 };
 
@@ -498,8 +497,10 @@ impl Summary {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
-    use std::{fs::File, io::BufReader};
+    use std::{
+        fs::File,
+        io::{BufReader, Read},
+    };
 
     use super::*;
 

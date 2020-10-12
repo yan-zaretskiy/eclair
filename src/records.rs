@@ -49,8 +49,10 @@
 
 use crate::{binary_parsing as bp, error::EclairError, FlexString, Result, FIXED_STRING_LENGTH};
 
-use std::fmt::{Display, Formatter};
-use std::{mem, str};
+use std::{
+    fmt::{Display, Formatter},
+    mem, str,
+};
 
 /// The maximum allowed number of elements per binary data sub-block is fixed upfront.
 const NUM_BLOCK_LENGTH: usize = 1000;
@@ -297,8 +299,6 @@ impl<B: ReadRecord> Iterator for Records<B> {
         }
     }
 }
-
-/// W
 
 /// Implementation of ReadRecord for any type that implements std::io::Read (e.g. a file or
 /// a network socket).
