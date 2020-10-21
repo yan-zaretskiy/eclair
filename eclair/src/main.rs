@@ -50,6 +50,10 @@ enum Opt {
         /// Input file
         #[structopt(parse(from_os_str))]
         input: PathBuf,
+
+        /// Pretty printing
+        #[structopt(short, long)]
+        pretty: bool,
     },
 }
 
@@ -102,9 +106,9 @@ fn main() -> ah::Result<()> {
             let reference = Summary::from_path(&reference)?;
             diff(&candidate, &reference, output.as_ref());
         }
-        Opt::Dump { input } => {
+        Opt::Dump { input, pretty } => {
             let bin_file = BinFile::from_path(&input)?;
-            dump(bin_file)?;
+            dump(bin_file, pretty)?;
         }
         Opt::ToCsv { input } => {
             to_csv_from_path(&input)?;
