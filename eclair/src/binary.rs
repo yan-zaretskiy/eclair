@@ -172,8 +172,12 @@ struct HeaderData {
 
 impl HeaderData {
     fn n_bytes_for_all_elements(&self) -> usize {
-        let n_blocks = 1 + (self.n_elements - 1) / self.block_length;
-        self.n_elements * self.element_size + n_blocks * 4 * 2
+        if self.n_elements == 0 {
+            0
+        } else {
+            let n_blocks = 1 + (self.n_elements - 1) / self.block_length;
+            self.n_elements * self.element_size + n_blocks * 4 * 2
+        }
     }
 }
 
