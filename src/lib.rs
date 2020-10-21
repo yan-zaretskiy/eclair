@@ -5,6 +5,9 @@ pub mod error;
 pub mod records;
 pub mod summary;
 
+#[cfg(feature = "read_zmq")]
+pub mod zmq;
+
 use smallstr::SmallString;
 
 /// Convenience type alias for a string with the SSO.

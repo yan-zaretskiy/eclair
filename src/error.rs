@@ -52,6 +52,9 @@ pub enum EclairError {
     #[error("ReadRecord implementor has been closed")]
     ReadRecordClosed,
 
+    #[error("Invalid file path requested: {0}")]
+    InvalidFilePath(String),
+
     #[cfg(feature = "read_zmq")]
     #[error("ZeroMQ error")]
     ZeroMqError(#[from] zmq::Error),
@@ -59,4 +62,12 @@ pub enum EclairError {
     #[cfg(feature = "read_zmq")]
     #[error("ZeroMQ socket has disconnected")]
     ZeroMqSocketDisconnected,
+
+    #[cfg(feature = "read_zmq")]
+    #[error("Received Smspec JSON string is not valid UTF-8")]
+    InvalidSmspecJson,
+
+    #[cfg(feature = "read_zmq")]
+    #[error("JSON deserealization error")]
+    DeJsonErr(#[from] serde_json::Error),
 }

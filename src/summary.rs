@@ -39,8 +39,11 @@ use std::{
     collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::{Display, Formatter},
+    fs::File,
+    io::{BufReader, SeekFrom},
 };
 
+use crossbeam_channel::Sender;
 use itertools::multizip;
 use once_cell::sync::Lazy;
 
@@ -256,11 +259,26 @@ pub struct Summary {
     pub items: Vec<SummaryItem>,
 }
 
+impl Summary {
+    /// Total number of summary items.
+    pub fn n_items(&self) -> usize {
+        self.items.len()
+    }
+
+    /// Number of time iterations that this Summary stores data for.
+    pub fn n_steps(&self) -> usize {
+        match self.items.first() {
+            Some(items) => items.values.len(),
+            None => 0,
+        }
+    }
+}
+
 /// Intermediate type for Smspec data to facilitate input validation. It contains a subset of
 /// records from which a valid Summary COULD be constructed. At the point of its construction the
 /// only input error we check for is the presence of duplicate records.
 #[derive(Debug)]
-struct SmspecRecords {
+pub(crate) struct SmspecRecords {
     records: HashMap<&'static str, Option<RecordData>>,
 }
 
@@ -278,48 +296,12 @@ impl Default for SmspecRecords {
 }
 
 impl SmspecRecords {
-    fn is_full(&self) -> bool {
-        self.records.values().all(|val| val.is_some())
+    pub(crate) fn new(records: HashMap<&'static str, Option<RecordData>>) -> Self {
+        SmspecRecords { records }
     }
 
-    fn new<I: ReadRecord>(reader: &mut I) -> Result<Self> {
-        use EclairError::*;
-
-        let mut smspec_records = Self::default();
-
-        loop {
-            let (_, record) = reader.read_record()?;
-            if record.is_none() {
-                break;
-            }
-
-            let Record { name, data } = record.unwrap();
-            // Stop reading records if we encounter a name that does not belong in SMSPEC.
-            if !SMSPEC_RECORDS.contains(&name.as_str()) {
-                log::debug!(target: "Parsing SMSPEC", "Non-SMSPEC record name encountered: {}.", name);
-                break;
-            }
-
-            // If we encounter a record that we wish to consume, first check whether we've already
-            // read it. "NAMES" is looked up as "WGNAMES" because only one of them is allowed in
-            // a given SMSPEC at the same time.
-            let lookup_name = if &name == "NAMES" { "WGNAMES" } else { &name };
-            if let Some(val) = smspec_records.records.get_mut(lookup_name) {
-                if val.is_some() {
-                    return Err(RecordEncounteredTwice(name.to_string()));
-                }
-                *val = Some(data);
-            }
-
-            // If we found all the records we need, stop reading further. This allows us to chain
-            // valid SMSPEC and UNSMRY records in a single stream.
-            if smspec_records.is_full() {
-                log::debug!(target: "Parsing SMSPEC", "Found all the neccessary records.");
-                break;
-            }
-        }
-
-        Ok(smspec_records)
+    fn is_full(&self) -> bool {
+        self.records.values().all(|val| val.is_some())
     }
 }
 
@@ -329,14 +311,14 @@ macro_rules! validate {
                     let values = if let RecordData::$kind(values) = $field_data {
                         values
                     } else {
-                        return Err(InvalidRecordDataType {
+                        return Err(EclairError::InvalidRecordDataType {
                             name: $field_name.to_string(),
                             expected: RecordDataKind::$kind.to_string(),
                             found: $field_data.kind_string(),
                         });
                     };
 
-                    let len_err = |expected| Err(UnexpectedRecordDataLength {
+                    let len_err = |expected| Err(EclairError::UnexpectedRecordDataLength {
                         name: $field_name.to_string(),
                         expected,
                         found: values.len(),
@@ -370,7 +352,7 @@ impl TryFrom<SmspecRecords> for Summary {
                     .records
                     .remove($field_name)
                     .unwrap()
-                    .ok_or_else(|| EclairError::MissingRecord($field_name.to_string()))?;
+                    .ok_or_else(|| MissingRecord($field_name.to_string()))?;
 
                    validate!(field_data, $field_name, $kind, $($valid_len),+)
                 }
@@ -419,104 +401,249 @@ impl TryFrom<SmspecRecords> for Summary {
     }
 }
 
-impl Summary {
-    /// Construct a new Summary instance from an implementor of ReadRecord.
-    pub fn new<I: ReadRecord>(reader: &mut I) -> Result<Self> {
-        let records = SmspecRecords::new(reader)?;
-        Summary::try_from(records)
+/// Implementations of InitializeSummary can build a Summary instance and an object that can be
+/// subsequently used to append more data to it.
+pub trait InitializeSummary {
+    type Updater: UpdateSummary;
+
+    /// Read enough data to build a valid Summary instance and convert yourself to the Updater
+    /// object.
+    fn init(self) -> Result<(Summary, Self::Updater)>;
+}
+
+/// UpdateSummary implementations provide new summary data using the supplied channel.
+pub trait UpdateSummary {
+    fn update(&mut self, sender: Sender<Vec<f32>>) -> Result<()>;
+}
+
+/// SummaryFileReader builds Summary data from file-like sources.
+pub struct SummaryFileReader<T> {
+    smspec_file: T,
+    unsmry_file: T,
+}
+
+/// FileUpdater updates Summary data from a file-like source.
+pub struct SummaryFileUpdater<T> {
+    unsmry_file: T,
+
+    n_items: usize,
+    n_steps: usize,
+}
+
+/// Scan the next three UNSMRY records and attempt to extract data for the next time iteration.
+fn get_next_params<T: ReadRecord>(
+    reader: &mut T,
+    step: usize,
+    n_items: usize,
+) -> Result<Option<(usize, Vec<f32>)>> {
+    use EclairError::*;
+
+    let mut n_bytes_read = 0;
+
+    let (n_bytes, record) = reader.read_record()?;
+
+    match &record {
+        None => return Ok(None),
+        Some(Record { name, .. }) if name != "SEQHDR" => {
+            return Err(EclairError::MissingRecord("SEQHDR".to_string()))
+        }
+        _ => n_bytes_read += n_bytes,
+    };
+
+    macro_rules! unwrap_and_validate {
+        ($record: expr, $field_name: literal, $kind: ident, $valid_len: expr) => {
+            match $record {
+                Some(Record { name, data }) if name == $field_name => {
+                    validate!(data, $field_name, $kind, $valid_len)
+                }
+                _ => {
+                    return Err(MissingRecord($field_name.to_string()));
+                }
+            }
+        };
     }
 
-    /// Add time series values. This method skips records until it encounters SEQHDR.
-    /// After that it reads, validates and consumes the next two records. It continues in this
-    /// fashion until it encounters the EOF.
-    pub fn update<I: ReadRecord>(
-        &mut self,
-        reader: &mut I,
-        n_read_max: Option<usize>,
-    ) -> Result<usize> {
+    // We've encountered a SEQHDR record. Now inspect the next two records.
+    let (n_bytes, record) = reader.read_record()?;
+    n_bytes_read += n_bytes;
+
+    // Next one should be MINISTEP. The wrapped counter inside starts at 0.
+    let step_index = unwrap_and_validate!(record, "MINISTEP", Int, 1)[0] as usize;
+
+    if step_index != step {
+        return Err(EclairError::InvalidMinistepValue {
+            expected: step,
+            found: step_index,
+        });
+    }
+
+    let (n_bytes, record) = reader.read_record()?;
+    n_bytes_read += n_bytes;
+
+    // Next is PARAMS with as many values as we have items.
+    let params = unwrap_and_validate!(record, "PARAMS", F32, n_items);
+    Ok(Some((n_bytes_read, params)))
+}
+
+impl<T> UpdateSummary for SummaryFileUpdater<T>
+where
+    T: std::io::Read + std::io::Seek,
+{
+    fn update(&mut self, sender: Sender<Vec<f32>>) -> Result<()> {
+        // Continuously tries to read from the UNSMRY file and sends new values over the provided
+        // channel.
+        loop {
+            let params = get_next_params(&mut self.unsmry_file, self.n_steps, self.n_items)?;
+            if let Some((_, params)) = params {
+                self.n_steps += 1;
+
+                if sender.send(params).is_err() {
+                    log::debug!(target: "Updating Summary", "Error while sending params over a channel");
+                    return Ok(());
+                }
+            }
+        }
+    }
+}
+
+impl SummaryFileReader<BufReader<File>> {
+    pub fn from_path<P>(input_path: P) -> Result<Self>
+    where
+        P: AsRef<std::path::Path>,
+    {
+        // If there is no stem, bail early.
+        let input_path = input_path.as_ref();
+
+        let stem = input_path.file_stem();
+        if stem.is_none() || stem.unwrap().to_str().is_none() {
+            return Err(EclairError::InvalidFilePath(
+                input_path.to_string_lossy().to_string(),
+            ));
+        }
+
+        // We allow SMSPEC and UNSMRY extensions or no extension at all.
+        if let Some(ext) = input_path.extension() {
+            let ext = ext.to_str();
+            if ext != Some("SMSPEC") && ext != Some("UNSMRY") {
+                return Err(EclairError::InvalidFilePath(
+                    input_path.to_string_lossy().to_string(),
+                ));
+            }
+        }
+
+        let open_file = |path| -> Result<_> { Ok(BufReader::new(File::open(path)?)) };
+
+        Ok(Self {
+            smspec_file: open_file(input_path.with_extension("SMSPEC"))?,
+            unsmry_file: open_file(input_path.with_extension("UNSMRY"))?,
+        })
+    }
+}
+
+impl<T> InitializeSummary for SummaryFileReader<T>
+where
+    T: std::io::Read + std::io::Seek,
+{
+    type Updater = SummaryFileUpdater<T>;
+
+    fn init(mut self) -> Result<(Summary, Self::Updater)> {
         use EclairError::*;
 
-        let mut n_read = 0;
+        // First build the SmspecRecords object from the Smspec source.
+        let mut smspec_records = SmspecRecords::default();
 
         loop {
-            if Some(n_read) == n_read_max {
-                break;
-            }
-
-            let (_, record) = reader.read_record()?;
+            let (_, record) = self.smspec_file.read_record()?;
             if record.is_none() {
                 break;
             }
 
-            if &record.unwrap().name != "SEQHDR" {
-                continue;
+            let Record { name, data } = record.unwrap();
+            // Stop reading records if we encounter a name that does not belong in SMSPEC.
+            if !SMSPEC_RECORDS.contains(&name.as_str()) {
+                log::debug!(target: "Parsing SMSPEC", "Non-SMSPEC record name encountered: {}.", name);
+                break;
             }
 
-            macro_rules! unwrap_and_validate {
-                ($record: expr, $field_name: literal, $kind: ident, $valid_len: expr) => {
-                    match $record {
-                        Some(Record { name, data }) if name == $field_name => {
-                            validate!(data, $field_name, $kind, $valid_len)
-                        }
-                        _ => {
-                            return Err(MissingRecord($field_name.to_string()));
-                        }
-                    }
-                };
+            // If we encounter a record that we wish to consume, first check whether we've already
+            // read it. "NAMES" is looked up as "WGNAMES" because only one of them is allowed in
+            // a given SMSPEC at the same time.
+            let lookup_name = if &name == "NAMES" { "WGNAMES" } else { &name };
+            if let Some(val) = smspec_records.records.get_mut(lookup_name) {
+                if val.is_some() {
+                    return Err(RecordEncounteredTwice(name.to_string()));
+                }
+                *val = Some(data);
             }
 
-            // We've encountered a SEQHDR record. Now inspect the next two records.
-            let (_, record) = reader.read_record()?;
-
-            // Next one should be MINISTEP. The wrapped value inside starts at 0.
-            let step_index = unwrap_and_validate!(record, "MINISTEP", Int, 1)[0] as usize;
-
-            // All items have the same length of their values by construction, we pick the first one.
-            if step_index != self.items[0].values.len() {
-                return Err(InvalidMinistepValue {
-                    expected: self.items[0].values.len(),
-                    found: step_index,
-                });
+            // If we found all the records we need, stop reading further. This allows us to chain
+            // valid SMSPEC and UNSMRY records in a single stream.
+            if smspec_records.is_full() {
+                log::debug!(target: "Parsing SMSPEC", "Found all the neccessary records.");
+                break;
             }
-
-            let (_, record) = reader.read_record()?;
-
-            // Next is PARAMS with as many values as we have items.
-            let params = unwrap_and_validate!(record, "PARAMS", F32, self.items.len());
-
-            for (item, param) in self.items.iter_mut().zip(params) {
-                item.values.push(param);
-            }
-
-            n_read += 1;
         }
 
-        Ok(n_read)
+        let mut summary = Summary::try_from(smspec_records)?;
+
+        let n_items = summary.items.len();
+        let mut n_steps = 0;
+
+        // Get the current size and don't read data past it (strictly speaking, we can go past by a
+        // fraction of a single UNSMRY triplet length).
+        let unsmry_size = self.unsmry_file.seek(SeekFrom::End(0)).unwrap();
+        let mut unsmry_pos = self.unsmry_file.seek(SeekFrom::Start(0)).unwrap();
+
+        loop {
+            let params = get_next_params(&mut self.unsmry_file, n_steps, n_items)?;
+
+            match params {
+                None => break,
+                Some((n_bytes, params)) => {
+                    for (item, param) in summary.items.iter_mut().zip(params) {
+                        item.values.push(param);
+                    }
+                    n_steps += 1;
+                    unsmry_pos += n_bytes as u64;
+                    // In case we're reading from a file that's still being written to, we stop here
+                    // and continue reading during subsequent updates.
+                    if unsmry_pos >= unsmry_size {
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok((
+            summary,
+            SummaryFileUpdater {
+                unsmry_file: self.unsmry_file,
+                n_items,
+                n_steps,
+            },
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs::File,
-        io::{BufReader, Read},
-    };
+    use std::io::Read;
 
     use super::*;
 
     #[test]
     fn read_spe_10() {
-        let f1 = File::open("assets/SPE10.SMSPEC").unwrap();
-        let f2 = File::open("assets/SPE10.UNSMRY").unwrap();
-        let stream = f1.chain(f2);
-        let mut reader = BufReader::new(stream);
-        let mut summary = Summary::new(&mut reader).unwrap();
-
-        assert_eq!(summary.dims, [100, 100, 30]);
-        assert_eq!(summary.start_date, [1, 3, 2005, 0, 0, 0]);
-        assert_eq!(summary.items.len(), 34);
-        let n_timesteps = summary.update(&mut reader, None);
-        assert!(n_timesteps.is_ok());
-        assert_eq!(n_timesteps.unwrap(), 58);
+        // let f1 = File::open("assets/SPE10.SMSPEC").unwrap();
+        // let f2 = File::open("assets/SPE10.UNSMRY").unwrap();
+        // let stream = f1.chain(f2);
+        // let mut reader = BufReader::new(stream);
+        // let mut summary = Summary::new(&mut reader).unwrap();
+        //
+        // assert_eq!(summary.dims, [100, 100, 30]);
+        // assert_eq!(summary.start_date, [1, 3, 2005, 0, 0, 0]);
+        // assert_eq!(summary.items.len(), 34);
+        // let n_timesteps = summary.update(&mut reader, None);
+        // assert!(n_timesteps.is_ok());
+        // assert_eq!(n_timesteps.unwrap(), 58);
     }
 }

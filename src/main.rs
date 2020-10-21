@@ -1,63 +1,30 @@
-use eclair_io::{records::ZmqConnection, summary::Summary};
-use std::time::Duration;
-
-struct Args {
-    server: String,
-    port: i32,
-    token: String,
-}
+use eclair_io::{
+    summary::{InitializeSummary, UpdateSummary},
+    zmq::ZmqConnection,
+};
+use std::thread;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = pico_args::Arguments::from_env();
+    let reader = ZmqConnection::new("hostname", 55555, "eclair")?;
+    let (summary, mut updater) = reader.init()?;
 
-    let args = Args {
-        server: args.value_from_str(["-s", "--server"])?,
-        port: args.value_from_str(["-p", "--port"])?,
-        token: args.value_from_str(["-t", "--token"])?,
-    };
+    println!("{:#?}", summary);
 
-    // A ZeroMQ connection to Echelon
-    let mut reader = ZmqConnection::new(&args.server, args.port, "eclair")?;
+    let (s, r) = crossbeam_channel::bounded(10);
 
-    // Stream a CSV to screen
-    let mut wtr = csv::WriterBuilder::new()
-        .delimiter(b'\t')
-        .from_writer(std::io::stdout());
-
-    // Send the data request.
-    reader.send(&args.token, 0)?;
-
-    let mut summary = Summary::new(&mut reader)?;
-
-    let names: Vec<String> = summary
-        .item_ids
-        .keys()
-        .map(|item_id| format!("{:^10}", item_id.name.as_str()))
-        .collect();
-    wtr.write_record(names)?;
-
-    let quals: Vec<String> = summary
-        .item_ids
-        .keys()
-        .map(|item_id| format!("{:^10}", item_id.qualifier.to_string()))
-        .collect();
-    wtr.write_record(quals)?;
-
-    let units: Vec<String> = summary
-        .item_ids
-        .iter()
-        .map(|(_, index)| format!("{:^10}", summary.items[*index].unit.as_str()))
-        .collect();
-    wtr.write_record(units)?;
+    thread::spawn(move || {
+        if let Err(err) = updater.update(s) {
+            println!("Error during updating: {}", err)
+        }
+    });
 
     loop {
-        summary.update(&mut reader, Some(1))?;
-        let new_values: Vec<String> = summary
-            .item_ids
-            .iter()
-            .map(|(_, index)| format!("{:^10}", summary.items[*index].values.last().unwrap()))
-            .collect();
-        wtr.write_record(new_values)?;
-        wtr.flush()?;
+        match r.try_recv() {
+            Ok(params) => println!("Received:\n{:?}", params),
+            Err(crossbeam_channel::TryRecvError::Empty) => continue,
+            Err(crossbeam_channel::TryRecvError::Disconnected) => break,
+        }
     }
+
+    Ok(())
 }

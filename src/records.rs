@@ -169,8 +169,12 @@ struct Header {
 impl Header {
     /// How many bytes are needed to represent the record's body.
     fn len_bytes(&self) -> usize {
-        let n_blocks = 1 + (self.n_elements - 1) / self.block_length;
-        self.n_elements * self.element_size + n_blocks * 4 * 2
+        if self.n_elements == 0 {
+            0
+        } else {
+            let n_blocks = 1 + (self.n_elements - 1) / self.block_length;
+            self.n_elements * self.element_size + n_blocks * 4 * 2
+        }
     }
 
     fn with_record_data(
@@ -338,74 +342,6 @@ where
                 data,
             }),
         ))
-    }
-}
-
-/// Encapsulation of the ZeroMQ monitored connection. The field order is important, because member
-/// variables has custom Drop implementations.
-#[cfg(feature = "read_zmq")]
-pub struct ZmqConnection {
-    monitor: zmq::Socket,
-    sock: zmq::Socket,
-    ctx: zmq::Context,
-}
-
-#[cfg(feature = "read_zmq")]
-impl ZmqConnection {
-    /// Creates a new ZeroMQ-based connection to the server. Expects the server address, the port
-    /// number and the identity for the underlying socket. The socket type is fixed to be of the
-    /// DEALER type.
-    pub fn new(server: &str, port: i32, identity: &str) -> Result<Self> {
-        let ctx = zmq::Context::new();
-        let sock = ctx.socket(zmq::DEALER)?;
-        sock.set_identity(identity.as_bytes())?;
-
-        // Connect to the server.
-        let address = format!("tcp://{}:{}", server, port);
-        log::info!("Connecting to {}", address);
-        sock.connect(&address)?;
-
-        // Setup the connection monitor socket.
-        sock.monitor(
-            "inproc://monitor-client",
-            zmq::SocketEvent::DISCONNECTED as i32,
-        )?;
-        let monitor = ctx.socket(zmq::PAIR)?;
-        monitor.connect("inproc://monitor-client")?;
-
-        Ok(ZmqConnection { monitor, sock, ctx })
-    }
-
-    pub fn send<T>(&self, data: T, flags: i32) -> Result<()>
-    where
-        T: zmq::Sendable,
-    {
-        data.send(&self.sock, flags)
-            .map_err(EclairError::ZeroMqError)
-    }
-}
-
-#[cfg(feature = "read_zmq")]
-impl ReadRecord for ZmqConnection {
-    fn read_record(&mut self) -> Result<(usize, Option<Record>)> {
-        // Watch for received messages and for the server disconnect event.
-        let mut items = [
-            self.sock.as_poll_item(zmq::POLLIN),
-            self.monitor.as_poll_item(zmq::POLLIN),
-        ];
-
-        loop {
-            zmq::poll(&mut items, 1000)?;
-            if items[0].is_readable() {
-                // We assume that one message corresponds to one record.
-                let msg = self.sock.recv_bytes(0)?;
-                let mut cursor = std::io::Cursor::new(msg.as_slice());
-                return cursor.read_record();
-            }
-            if items[1].is_readable() {
-                return Err(EclairError::ZeroMqSocketDisconnected);
-            }
-        }
     }
 }
 
