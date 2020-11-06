@@ -4,6 +4,7 @@ mod binary_parsing;
 pub mod error;
 pub mod records;
 pub mod summary;
+pub mod summary_manager;
 
 #[cfg(feature = "read_zmq")]
 pub mod zmq;

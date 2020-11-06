@@ -272,6 +272,13 @@ impl Summary {
             None => 0,
         }
     }
+
+    /// This function expect the size of params to equal the size of items.
+    pub fn append(&mut self, params: Vec<f32>) {
+        for (item, param) in self.items.iter_mut().zip(params) {
+            item.values.push(param);
+        }
+    }
 }
 
 /// Intermediate type for Smspec data to facilitate input validation. It contains a subset of
@@ -404,7 +411,8 @@ impl TryFrom<SmspecRecords> for Summary {
 /// Implementations of InitializeSummary can build a Summary instance and an object that can be
 /// subsequently used to append more data to it.
 pub trait InitializeSummary {
-    type Updater: UpdateSummary;
+    // Updater is meant to be moved to a separate thread.
+    type Updater: UpdateSummary + Send + 'static;
 
     /// Read enough data to build a valid Summary instance and convert yourself to the Updater
     /// object.
@@ -542,7 +550,7 @@ impl SummaryFileReader<BufReader<File>> {
 
 impl<T> InitializeSummary for SummaryFileReader<T>
 where
-    T: std::io::Read + std::io::Seek,
+    T: std::io::Read + std::io::Seek + Send + 'static,
 {
     type Updater = SummaryFileUpdater<T>;
 
@@ -600,9 +608,7 @@ where
             match params {
                 None => break,
                 Some((n_bytes, params)) => {
-                    for (item, param) in summary.items.iter_mut().zip(params) {
-                        item.values.push(param);
-                    }
+                    summary.append(params);
                     n_steps += 1;
                     unsmry_pos += n_bytes as u64;
                     // In case we're reading from a file that's still being written to, we stop here

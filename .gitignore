@@ -12,3 +12,6 @@ plotting/.ipynb_checkpoints
 
 # Python cache
 **/__pycache__
+
+# Development notes
+/notes
