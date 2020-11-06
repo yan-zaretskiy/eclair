@@ -8,11 +8,13 @@ use crossbeam_channel::Receiver;
 
 use crate::{
     summary::{InitializeSummary, ItemId, Summary, SummaryFileReader, UpdateSummary},
-    Result,
+    FlexString, Result,
 };
 
+use crate::summary::ItemQualifier;
 #[cfg(feature = "read_zmq")]
 use crate::zmq::ZmqConnection;
+use serde::de::Unexpected::Float;
 
 struct UpdatableSummary {
     data: Summary,
@@ -110,28 +112,58 @@ impl SummaryManager {
                 ids.insert(key);
             }
         }
-
         ids
     }
 
+    /// Get optional values for an item id from all summary sources.
+    fn get_items_for_id(&self, id: ItemId) -> HashMap<&str, Option<&[f32]>> {
+        let mut items = HashMap::new();
+
+        for (name, summary) in &self.summaries {
+            let value = summary
+                .data
+                .item_ids
+                .get(&id)
+                .map(|index| summary.data.items[*index].values.as_slice());
+            items.insert(name.as_str(), value);
+        }
+        items
+    }
+
     pub fn perf_item<'a>(&'a self, name: &'_ str) -> HashMap<&'a str, Option<&'a [f32]>> {
-        unimplemented!()
+        self.get_items_for_id(ItemId {
+            name: FlexString::from_str(name),
+            qualifier: ItemQualifier::Performance,
+        })
     }
 
     pub fn field_item<'a>(&'a self, name: &'_ str) -> HashMap<&'a str, Option<&'a [f32]>> {
-        unimplemented!()
+        self.get_items_for_id(ItemId {
+            name: FlexString::from_str(name),
+            qualifier: ItemQualifier::Field,
+        })
     }
 
     pub fn aquifer_item<'a>(
         &'a self,
         name: &'_ str,
-        id: i32,
+        index: i32,
     ) -> HashMap<&'a str, Option<&'a [f32]>> {
-        unimplemented!()
+        self.get_items_for_id(ItemId {
+            name: FlexString::from_str(name),
+            qualifier: ItemQualifier::Aquifer { index },
+        })
     }
 
-    pub fn block_item<'a>(&'a self, name: &'_ str, id: i32) -> HashMap<&'a str, Option<&'a [f32]>> {
-        unimplemented!()
+    pub fn block_item<'a>(
+        &'a self,
+        name: &'_ str,
+        index: i32,
+    ) -> HashMap<&'a str, Option<&'a [f32]>> {
+        self.get_items_for_id(ItemId {
+            name: FlexString::from_str(name),
+            qualifier: ItemQualifier::Block { index },
+        })
     }
 
     pub fn well_item<'a>(
@@ -139,23 +171,39 @@ impl SummaryManager {
         name: &'_ str,
         well_name: &'_ str,
     ) -> HashMap<&'a str, Option<&'a [f32]>> {
-        unimplemented!()
+        self.get_items_for_id(ItemId {
+            name: FlexString::from_str(name),
+            qualifier: ItemQualifier::Well {
+                wg_name: FlexString::from_str(well_name),
+            },
+        })
     }
 
     pub fn group_item<'a>(
         &'a self,
         name: &'_ str,
-        well_name: &'_ str,
+        group_name: &'_ str,
     ) -> HashMap<&'a str, Option<&'a [f32]>> {
-        unimplemented!()
+        self.get_items_for_id(ItemId {
+            name: FlexString::from_str(name),
+            qualifier: ItemQualifier::Group {
+                wg_name: FlexString::from_str(group_name),
+            },
+        })
     }
 
     pub fn region_item<'a>(
         &'a self,
         name: &'_ str,
-        id: i32,
+        index: i32,
     ) -> HashMap<&'a str, Option<&'a [f32]>> {
-        unimplemented!()
+        self.get_items_for_id(ItemId {
+            name: FlexString::from_str(name),
+            qualifier: ItemQualifier::Region {
+                wg_name: None,
+                index,
+            },
+        })
     }
 
     pub fn cross_region_item<'a>(
@@ -164,15 +212,24 @@ impl SummaryManager {
         from: i32,
         to: i32,
     ) -> HashMap<&'a str, Option<&'a [f32]>> {
-        unimplemented!()
+        self.get_items_for_id(ItemId {
+            name: FlexString::from_str(name),
+            qualifier: ItemQualifier::CrossRegionFlow { from, to },
+        })
     }
 
     pub fn completion_item<'a>(
         &'a self,
         name: &'_ str,
         well_name: &'_ str,
-        id: i32,
+        index: i32,
     ) -> HashMap<&'a str, Option<&'a [f32]>> {
-        unimplemented!()
+        self.get_items_for_id(ItemId {
+            name: FlexString::from_str(name),
+            qualifier: ItemQualifier::Completion {
+                wg_name: FlexString::from_str(well_name),
+                index,
+            },
+        })
     }
 }
