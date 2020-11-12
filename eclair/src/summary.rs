@@ -41,6 +41,8 @@ use std::{
     fmt::{Display, Formatter},
     fs::File,
     io::{BufReader, SeekFrom},
+    thread::sleep,
+    time::Duration,
 };
 
 use crossbeam_channel::Sender;
@@ -510,6 +512,7 @@ where
                     return Ok(());
                 }
             }
+            sleep(Duration::from_secs(2));
         }
     }
 }
@@ -540,7 +543,6 @@ impl SummaryFileReader<BufReader<File>> {
         }
 
         let open_file = |path| -> Result<_> { Ok(BufReader::new(File::open(path)?)) };
-
         Ok(Self {
             smspec_file: open_file(input_path.with_extension("SMSPEC"))?,
             unsmry_file: open_file(input_path.with_extension("UNSMRY"))?,

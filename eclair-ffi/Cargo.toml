@@ -1,0 +1,17 @@
+[package]
+name = "eclair-ffi"
+version = "0.1.0"
+authors = ["Yan Zaretskiy <yan@fastmail.com>"]
+edition = "2018"
+
+[dependencies]
+eclair-io = { path = "../eclair", features = ["read_zmq"] }
+cxx = "1.0"
+
+[build-dependencies]
+cxx-build = "1.0"
+
+[lib]
+crate-type = ["staticlib"]
+name = "eclair_ffi"
+path = "./src/eclair_ffi.rs"

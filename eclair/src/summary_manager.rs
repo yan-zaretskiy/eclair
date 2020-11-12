@@ -7,14 +7,14 @@ use std::{
 use crossbeam_channel::Receiver;
 
 use crate::{
-    summary::{InitializeSummary, ItemId, Summary, SummaryFileReader, UpdateSummary},
+    summary::{
+        InitializeSummary, ItemId, ItemQualifier, Summary, SummaryFileReader, UpdateSummary,
+    },
     FlexString, Result,
 };
 
-use crate::summary::ItemQualifier;
 #[cfg(feature = "read_zmq")]
 use crate::zmq::ZmqConnection;
-use serde::de::Unexpected::Float;
 
 struct UpdatableSummary {
     data: Summary,
@@ -94,20 +94,25 @@ impl SummaryManager {
         self.add(&name, reader)
     }
 
-    /// For each summary it tries to pull one value from the corresponding receiver channel.
+    /// For each summary it tries to pull values from the corresponding receiver channel.
     pub fn refresh(&mut self) -> Result<()> {
         for (_, summary) in &mut self.summaries {
-            if let Ok(params) = summary.receiver.try_recv() {
-                summary.data.append(params);
+            loop {
+                if let Ok(params) = summary.receiver.try_recv() {
+                    println!("Received params: {:?}", params);
+                    summary.data.append(params);
+                } else {
+                    break;
+                }
             }
         }
         Ok(())
     }
 
-    pub fn all_item_ids(&mut self) -> HashSet<&ItemId> {
+    pub fn all_item_ids(&self) -> HashSet<&ItemId> {
         let mut ids = HashSet::new();
 
-        for (_, summary) in &mut self.summaries {
+        for (_, summary) in &self.summaries {
             for key in summary.data.item_ids.keys() {
                 ids.insert(key);
             }
@@ -130,7 +135,7 @@ impl SummaryManager {
         items
     }
 
-    pub fn perf_item<'a>(&'a self, name: &'_ str) -> HashMap<&'a str, Option<&'a [f32]>> {
+    pub fn performance_item<'a>(&'a self, name: &'_ str) -> HashMap<&'a str, Option<&'a [f32]>> {
         self.get_items_for_id(ItemId {
             name: FlexString::from_str(name),
             qualifier: ItemQualifier::Performance,

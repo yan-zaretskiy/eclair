@@ -1,6 +1,8 @@
 use std::{
     collections::HashMap,
-    convert::{From, TryFrom},
+    convert::{From, TryFrom, TryInto},
+    thread::sleep,
+    time::Duration,
 };
 
 use crossbeam_channel::Sender;
@@ -13,7 +15,6 @@ use crate::{
     summary::{InitializeSummary, SmspecRecords, Summary, UpdateSummary},
     FlexString, Result,
 };
-use std::convert::TryInto;
 
 /// Encapsulation of the ZeroMQ monitored connection. The field order is important, because member
 /// variables has custom Drop implementations.
@@ -111,6 +112,7 @@ impl UpdateSummary for ZmqUpdater {
                     return Ok(());
                 }
             }
+            sleep(Duration::from_secs(2));
         }
     }
 }
