@@ -117,6 +117,9 @@ std::tuple<double, double> data_range(const rust::Vec<TimeSeries> &data) {
   double min = std::numeric_limits<double>::max();
   double max = std::numeric_limits<double>::lowest();
   for (const auto &d : data) {
+    if (d.values.empty()) {
+      continue;
+    }
     const auto [cmin, cmax] =
         std::minmax_element(d.values.begin(), d.values.end());
     min = std::min(min, *cmin);
