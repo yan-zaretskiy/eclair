@@ -4,8 +4,11 @@ use std::{
     thread,
 };
 
+use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
 use crossbeam_channel::Receiver;
 
+#[cfg(feature = "read_zmq")]
+use crate::zmq::ZmqConnection;
 use crate::{
     summary::{
         InitializeSummary, ItemId, ItemQualifier, Summary, SummaryFileReader, UpdateSummary,
@@ -13,10 +16,8 @@ use crate::{
     FlexString, Result,
 };
 
-#[cfg(feature = "read_zmq")]
-use crate::zmq::ZmqConnection;
-
 struct UpdatableSummary {
+    name: String,
     data: Summary,
     updater_thread: thread::JoinHandle<()>,
     receiver: Receiver<Vec<f32>>,
@@ -25,13 +26,13 @@ struct UpdatableSummary {
 /// SummaryManager owns all summary data from multiple sources. It can update the data and accept
 /// queries for individual summary item values.
 pub struct SummaryManager {
-    summaries: HashMap<String, UpdatableSummary>,
+    summaries: Vec<UpdatableSummary>,
 }
 
 impl SummaryManager {
     pub fn new() -> Self {
         SummaryManager {
-            summaries: HashMap::new(),
+            summaries: Vec::new(),
         }
     }
 
@@ -47,14 +48,12 @@ impl SummaryManager {
             }
         });
 
-        self.summaries.insert(
-            name.to_string(),
-            UpdatableSummary {
-                data,
-                updater_thread,
-                receiver,
-            },
-        );
+        self.summaries.push(UpdatableSummary {
+            name: name.to_string(),
+            data,
+            updater_thread,
+            receiver,
+        });
 
         Ok(())
     }
@@ -96,7 +95,7 @@ impl SummaryManager {
 
     /// For each summary it tries to pull values from the corresponding receiver channel.
     pub fn refresh(&mut self) -> Result<()> {
-        for (_, summary) in &mut self.summaries {
+        for summary in &mut self.summaries {
             loop {
                 if let Ok(params) = summary.receiver.try_recv() {
                     println!("Received params: {:?}", params);
@@ -112,59 +111,96 @@ impl SummaryManager {
     pub fn all_item_ids(&self) -> HashSet<&ItemId> {
         let mut ids = HashSet::new();
 
-        for (_, summary) in &self.summaries {
-            for key in summary.data.item_ids.keys() {
-                ids.insert(key);
-            }
+        for summary in &self.summaries {
+            ids.extend(summary.data.item_ids.keys());
         }
         ids
     }
 
-    /// Get optional values for an item id from all summary sources.
-    fn get_items_for_id(&self, id: ItemId) -> HashMap<&str, Option<&[f32]>> {
-        let mut items = HashMap::new();
-
-        for (name, summary) in &self.summaries {
-            let value = summary
-                .data
-                .item_ids
-                .get(&id)
-                .map(|index| summary.data.items[*index].values.as_slice());
-            items.insert(name.as_str(), value);
-        }
-        items
+    pub fn summary_names(&self) -> Vec<&str> {
+        self.summaries.iter().map(|s| s.name.as_str()).collect()
     }
 
-    pub fn performance_item<'a>(&'a self, name: &'_ str) -> HashMap<&'a str, Option<&'a [f32]>> {
+    /// Get optional unit and values for an item id from all summary sources.
+    fn get_items_for_id(&self, id: ItemId) -> Vec<Option<(&str, &[f32])>> {
+        self.summaries
+            .iter()
+            .map(|s| {
+                s.data.item_ids.get(&id).map(|index| {
+                    let item = &s.data.items[*index];
+                    (item.unit.as_str(), item.values.as_slice())
+                })
+            })
+            .collect()
+    }
+
+    pub fn unix_time(&self) -> Vec<Vec<i64>> {
+        // All summaries contain the "TIME" vector, unwrap is OK.
+        let times: Vec<&[f32]> = self
+            .get_items_for_id(ItemId {
+                name: FlexString::from_str("TIME"),
+                qualifier: ItemQualifier::Time,
+            })
+            .iter()
+            .map(|data| data.unwrap().1)
+            .collect();
+
+        let start_dates: Vec<&[i32; 6]> =
+            self.summaries.iter().map(|s| &s.data.start_date).collect();
+
+        times
+            .into_iter()
+            .zip(start_dates)
+            .map(|(time, start_date)| {
+                let d =
+                    NaiveDate::from_ymd(start_date[2], start_date[1] as u32, start_date[0] as u32);
+                let t = NaiveTime::from_hms_milli(
+                    start_date[3] as u32,
+                    start_date[4] as u32,
+                    (start_date[5] / 1_000_000) as u32,
+                    (start_date[5] % 1_000_000) as u32,
+                );
+                let dt = NaiveDateTime::new(d, t);
+
+                time.iter()
+                    .map(|days| {
+                        let next_dt = dt + Duration::seconds((days * 86400.0) as i64);
+                        next_dt.timestamp()
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    pub fn time_item<'a>(&'a self, name: &'_ str) -> Vec<Option<(&str, &[f32])>> {
+        self.get_items_for_id(ItemId {
+            name: FlexString::from_str(name),
+            qualifier: ItemQualifier::Time,
+        })
+    }
+
+    pub fn performance_item<'a>(&'a self, name: &'_ str) -> Vec<Option<(&str, &[f32])>> {
         self.get_items_for_id(ItemId {
             name: FlexString::from_str(name),
             qualifier: ItemQualifier::Performance,
         })
     }
 
-    pub fn field_item<'a>(&'a self, name: &'_ str) -> HashMap<&'a str, Option<&'a [f32]>> {
+    pub fn field_item<'a>(&'a self, name: &'_ str) -> Vec<Option<(&str, &[f32])>> {
         self.get_items_for_id(ItemId {
             name: FlexString::from_str(name),
             qualifier: ItemQualifier::Field,
         })
     }
 
-    pub fn aquifer_item<'a>(
-        &'a self,
-        name: &'_ str,
-        index: i32,
-    ) -> HashMap<&'a str, Option<&'a [f32]>> {
+    pub fn aquifer_item<'a>(&'a self, name: &'_ str, index: i32) -> Vec<Option<(&str, &[f32])>> {
         self.get_items_for_id(ItemId {
             name: FlexString::from_str(name),
             qualifier: ItemQualifier::Aquifer { index },
         })
     }
 
-    pub fn block_item<'a>(
-        &'a self,
-        name: &'_ str,
-        index: i32,
-    ) -> HashMap<&'a str, Option<&'a [f32]>> {
+    pub fn block_item<'a>(&'a self, name: &'_ str, index: i32) -> Vec<Option<(&str, &[f32])>> {
         self.get_items_for_id(ItemId {
             name: FlexString::from_str(name),
             qualifier: ItemQualifier::Block { index },
@@ -175,7 +211,7 @@ impl SummaryManager {
         &'a self,
         name: &'_ str,
         well_name: &'_ str,
-    ) -> HashMap<&'a str, Option<&'a [f32]>> {
+    ) -> Vec<Option<(&str, &[f32])>> {
         self.get_items_for_id(ItemId {
             name: FlexString::from_str(name),
             qualifier: ItemQualifier::Well {
@@ -188,7 +224,7 @@ impl SummaryManager {
         &'a self,
         name: &'_ str,
         group_name: &'_ str,
-    ) -> HashMap<&'a str, Option<&'a [f32]>> {
+    ) -> Vec<Option<(&str, &[f32])>> {
         self.get_items_for_id(ItemId {
             name: FlexString::from_str(name),
             qualifier: ItemQualifier::Group {
@@ -197,11 +233,7 @@ impl SummaryManager {
         })
     }
 
-    pub fn region_item<'a>(
-        &'a self,
-        name: &'_ str,
-        index: i32,
-    ) -> HashMap<&'a str, Option<&'a [f32]>> {
+    pub fn region_item<'a>(&'a self, name: &'_ str, index: i32) -> Vec<Option<(&str, &[f32])>> {
         self.get_items_for_id(ItemId {
             name: FlexString::from_str(name),
             qualifier: ItemQualifier::Region {
@@ -216,7 +248,7 @@ impl SummaryManager {
         name: &'_ str,
         from: i32,
         to: i32,
-    ) -> HashMap<&'a str, Option<&'a [f32]>> {
+    ) -> Vec<Option<(&str, &[f32])>> {
         self.get_items_for_id(ItemId {
             name: FlexString::from_str(name),
             qualifier: ItemQualifier::CrossRegionFlow { from, to },
@@ -228,7 +260,7 @@ impl SummaryManager {
         name: &'_ str,
         well_name: &'_ str,
         index: i32,
-    ) -> HashMap<&'a str, Option<&'a [f32]>> {
+    ) -> Vec<Option<(&str, &[f32])>> {
         self.get_items_for_id(ItemId {
             name: FlexString::from_str(name),
             qualifier: ItemQualifier::Completion {

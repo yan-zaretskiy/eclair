@@ -10,11 +10,11 @@ include(FetchContent)
 FetchContent_Declare(mahi-gui GIT_REPOSITORY https://github.com/mahilab/mahi-gui.git)
 FetchContent_MakeAvailable(mahi-gui)
 
-add_executable(eclair_gui main.cpp utils.cpp "${CXXBRIDGE_BUILD_DIR}/eclair-ffi/src/eclair_ffi.rs.cc")
+add_executable(eclair_gui main.cpp utils.cpp deps/ImGuiFileBrowser.cpp "${CXXBRIDGE_BUILD_DIR}/eclair-ffi/src/eclair_ffi.rs.cc")
 
 # Point to the folder where cargo places the cxx-generated C++ code.
 target_include_directories(
-        eclair_gui PRIVATE "${CXXBRIDGE_BUILD_DIR}/eclair-ffi/src" "${CXXBRIDGE_BUILD_DIR}"
+        eclair_gui PRIVATE deps "${CXXBRIDGE_BUILD_DIR}/eclair-ffi/src" "${CXXBRIDGE_BUILD_DIR}/rust"
 )
 
 # Link eclair-ffi and ZeroMQ. When generating the static library from eclair, it does not include any C definitions

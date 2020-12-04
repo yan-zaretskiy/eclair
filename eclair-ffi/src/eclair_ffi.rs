@@ -3,10 +3,10 @@ use eclair_io::{
     summary::{ItemId as EclItemId, ItemQualifier as EclQualifier},
     summary_manager::SummaryManager as EclSM,
 };
-use std::collections::HashMap;
 
 #[cxx::bridge]
 mod ffi {
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
     pub(crate) enum ItemQualifier {
         Time,
         Performance,
@@ -21,6 +21,7 @@ mod ffi {
         Unrecognized,
     }
 
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
     pub(crate) struct ItemId {
         name: String,
         qualifier: ItemQualifier,
@@ -29,10 +30,14 @@ mod ffi {
     }
 
     pub(crate) struct TimeSeries {
-        // &str in shared types are not supported yet.
-        pub(crate) name: String,
         // This is terrible. Can't wait for cxx to support slices.
-        pub(crate) values: Vec<f32>,
+        pub(crate) values: Vec<f64>,
+        // In principle, units may differ between summary files for a given item.
+        pub(crate) unit: String,
+    }
+
+    pub(crate) struct TimeStamps {
+        pub(crate) values: Vec<f64>,
     }
 
     extern "Rust" {
@@ -51,10 +56,13 @@ mod ffi {
 
         fn refresh(&mut self) -> Result<()>;
 
-        fn count_items(&self) -> usize;
+        fn length(&self) -> usize;
+        fn summary_name(&self, index: usize) -> &str;
 
         fn all_item_ids(&self) -> Vec<ItemId>;
 
+        fn unix_time(&self) -> Vec<TimeStamps>;
+        fn time_item(&self, name: &str) -> Vec<TimeSeries>;
         fn performance_item(&self, name: &str) -> Vec<TimeSeries>;
         fn field_item(&self, name: &str) -> Vec<TimeSeries>;
         fn aquifer_item(&self, name: &str, index: i32) -> Vec<TimeSeries>;
@@ -62,7 +70,7 @@ mod ffi {
         fn well_item(&self, name: &str, well_name: &str) -> Vec<TimeSeries>;
         fn group_item(&self, name: &str, group_name: &str) -> Vec<TimeSeries>;
         fn region_item(&self, name: &str, index: i32) -> Vec<TimeSeries>;
-        fn cross_region_item(&self, name: &str, from: i32, to: i32) -> Vec<TimeSeries>;
+        fn cross_region_item(&self, name: &str, index: i32) -> Vec<TimeSeries>;
         fn completion_item(&self, name: &str, well_name: &str, index: i32) -> Vec<TimeSeries>;
     }
 }
@@ -143,25 +151,57 @@ impl SummaryManager {
         self.0.refresh()
     }
 
-    pub fn count_items(&self) -> usize {
-        self.0.all_item_ids().len()
+    pub fn length(&self) -> usize {
+        self.0.summary_names().len()
+    }
+
+    pub fn summary_name(&self, index: usize) -> &str {
+        self.0.summary_names().get(index).map_or("", |name| *name)
+    }
+
+    pub fn summary_names(&self) -> Vec<String> {
+        self.0
+            .summary_names()
+            .iter()
+            .map(|name| name.to_string())
+            .collect()
     }
 
     pub fn all_item_ids(&self) -> Vec<ffi::ItemId> {
-        self.0.all_item_ids().iter().map(|&el| el.into()).collect()
+        let mut ids: Vec<ffi::ItemId> = self.0.all_item_ids().iter().map(|&el| el.into()).collect();
+        ids.sort();
+        ids
     }
 
-    fn item_to_ffi<'a>(item: HashMap<&'a str, Option<&'a [f32]>>) -> Vec<ffi::TimeSeries> {
+    fn item_to_ffi<'a>(item: Vec<Option<(&str, &[f32])>>) -> Vec<ffi::TimeSeries> {
         item.iter()
-            .map(|(name, data)| ffi::TimeSeries {
-                name: name.to_string(),
-                values: if let Some(data) = data {
-                    data.to_vec()
+            .map(|data| {
+                let (unit, values) = if let Some(data) = data {
+                    (data.0.to_string(), data.1.to_vec())
                 } else {
-                    vec![]
-                },
+                    (String::new(), vec![])
+                };
+
+                ffi::TimeSeries {
+                    values: values.iter().map(|el| *el as f64).collect(),
+                    unit,
+                }
             })
             .collect()
+    }
+
+    pub fn unix_time(&self) -> Vec<ffi::TimeStamps> {
+        self.0
+            .unix_time()
+            .into_iter()
+            .map(|values| ffi::TimeStamps {
+                values: values.iter().map(|el| *el as f64).collect(),
+            })
+            .collect()
+    }
+
+    pub fn time_item(&self, name: &str) -> Vec<ffi::TimeSeries> {
+        SummaryManager::item_to_ffi(self.0.time_item(name))
     }
 
     pub fn performance_item(&self, name: &str) -> Vec<ffi::TimeSeries> {
@@ -192,7 +232,9 @@ impl SummaryManager {
         SummaryManager::item_to_ffi(self.0.region_item(name, index))
     }
 
-    pub fn cross_region_item(&self, name: &str, from: i32, to: i32) -> Vec<ffi::TimeSeries> {
+    pub fn cross_region_item(&self, name: &str, index: i32) -> Vec<ffi::TimeSeries> {
+        let to = index / 32768 as i32 - 10;
+        let from = index - 32768 * (to + 10);
         SummaryManager::item_to_ffi(self.0.cross_region_item(name, from, to))
     }
 

@@ -160,8 +160,8 @@ impl ItemId {
                 [b'B', ..] if num_valid => Block { index },
                 _ => {
                     log::info!(target: "Building SummaryItem",
-                        "Unrecognized summary item. KEYWORD: {}, WGNAME: {}, NUM: {}",
-                        name, wg_name, index
+                               "Unrecognized summary item. KEYWORD: {}, WGNAME: {}, NUM: {}",
+                               name, wg_name, index
                     );
                     Unrecognized { wg_name, index }
                 }
@@ -440,25 +440,14 @@ pub struct SummaryFileUpdater<T> {
     n_steps: usize,
 }
 
-/// Scan the next three UNSMRY records and attempt to extract data for the next time iteration.
+/// Scan the next two or three UNSMRY records and attempt to extract data for the next time
+/// iteration.
 fn get_next_params<T: ReadRecord>(
     reader: &mut T,
     step: usize,
     n_items: usize,
 ) -> Result<Option<(usize, Vec<f32>)>> {
     use EclairError::*;
-
-    let mut n_bytes_read = 0;
-
-    let (n_bytes, record) = reader.read_record()?;
-
-    match &record {
-        None => return Ok(None),
-        Some(Record { name, .. }) if name != "SEQHDR" => {
-            return Err(EclairError::MissingRecord("SEQHDR".to_string()))
-        }
-        _ => n_bytes_read += n_bytes,
-    };
 
     macro_rules! unwrap_and_validate {
         ($record: expr, $field_name: literal, $kind: ident, $valid_len: expr) => {
@@ -473,9 +462,24 @@ fn get_next_params<T: ReadRecord>(
         };
     }
 
-    // We've encountered a SEQHDR record. Now inspect the next two records.
-    let (n_bytes, record) = reader.read_record()?;
-    n_bytes_read += n_bytes;
+    let mut n_bytes_read = 0;
+
+    let (n_bytes, mut record) = reader.read_record()?;
+
+    // This could be a SEQHDR.
+    let read_next = match &record {
+        None => return Ok(None),
+        Some(Record { name, .. }) => {
+            n_bytes_read += n_bytes;
+            name == "SEQHDR"
+        }
+    };
+
+    if read_next {
+        let (n_bytes, next_record) = reader.read_record()?;
+        record = next_record;
+        n_bytes_read += n_bytes;
+    }
 
     // Next one should be MINISTEP. The wrapped counter inside starts at 0.
     let step_index = unwrap_and_validate!(record, "MINISTEP", Int, 1)[0] as usize;
