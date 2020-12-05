@@ -207,6 +207,18 @@ pub enum ItemQualifier {
     },
 }
 
+impl ItemQualifier {
+    pub fn is_recognized(&self) -> bool {
+        match self {
+            ItemQualifier::Unrecognized {
+                wg_name: _,
+                index: _,
+            } => false,
+            _ => true,
+        }
+    }
+}
+
 impl Display for ItemQualifier {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         use ItemQualifier::*;

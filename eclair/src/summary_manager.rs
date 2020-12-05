@@ -1,8 +1,4 @@
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    thread,
-};
+use std::{borrow::Cow, collections::HashSet, thread};
 
 use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
 use crossbeam_channel::Receiver;

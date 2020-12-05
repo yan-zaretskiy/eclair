@@ -168,7 +168,13 @@ impl SummaryManager {
     }
 
     pub fn all_item_ids(&self) -> Vec<ffi::ItemId> {
-        let mut ids: Vec<ffi::ItemId> = self.0.all_item_ids().iter().map(|&el| el.into()).collect();
+        let mut ids: Vec<ffi::ItemId> = self
+            .0
+            .all_item_ids()
+            .iter()
+            .filter(|el| el.qualifier.is_recognized())
+            .map(|&el| el.into())
+            .collect();
         ids.sort();
         ids
     }
