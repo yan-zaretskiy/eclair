@@ -54,7 +54,7 @@ mod ffi {
             name: &str,
         ) -> Result<()>;
 
-        fn refresh(&mut self) -> Result<()>;
+        fn refresh(&mut self) -> Result<bool>;
 
         fn length(&self) -> usize;
         fn summary_name(&self, index: usize) -> &str;
@@ -147,7 +147,7 @@ impl SummaryManager {
         )
     }
 
-    pub fn refresh(&mut self) -> Result<(), EclairError> {
+    pub fn refresh(&mut self) -> Result<bool, EclairError> {
         self.0.refresh()
     }
 

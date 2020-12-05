@@ -81,14 +81,18 @@ impl UpdateSummary for ZmqUpdater {
             self.conn.sock.as_poll_item(zmq::POLLIN),
         ];
 
+        let mut is_connected = true;
         loop {
             zmq::poll(&mut items, 0)?;
 
-            if items[0].is_readable() {
-                return Err(EclairError::ZeroMqSocketDisconnected);
+            if is_connected && items[0].is_readable() {
+                eprintln!("Detected ZeroMQ socket disconnect.");
+                is_connected = false;
+                //return Err(EclairError::ZeroMqSocketDisconnected);
             }
 
             if items[1].is_readable() {
+                is_connected = true;
                 let msg = self.conn.sock.recv_multipart(0)?;
 
                 // Make sure the time iteration is correct.
@@ -112,7 +116,8 @@ impl UpdateSummary for ZmqUpdater {
                     return Ok(());
                 }
             }
-            sleep(Duration::from_secs(2));
+
+            sleep(Duration::from_millis(100));
         }
     }
 }

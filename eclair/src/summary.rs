@@ -209,13 +209,7 @@ pub enum ItemQualifier {
 
 impl ItemQualifier {
     pub fn is_recognized(&self) -> bool {
-        match self {
-            ItemQualifier::Unrecognized {
-                wg_name: _,
-                index: _,
-            } => false,
-            _ => true,
-        }
+        !matches!(self, ItemQualifier::Unrecognized { .. })
     }
 }
 
@@ -528,7 +522,7 @@ where
                     return Ok(());
                 }
             }
-            sleep(Duration::from_secs(2));
+            sleep(Duration::from_millis(100));
         }
     }
 }

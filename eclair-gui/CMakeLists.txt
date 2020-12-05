@@ -19,5 +19,8 @@ target_include_directories(
 
 # Link eclair-ffi and ZeroMQ. When generating the static library from eclair, it does not include any C definitions
 # from external libraries, so we need to link to ZeroMQ manually.
-target_link_directories(eclair_gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../target/release/" "/usr/local/lib")
-target_link_libraries(eclair_gui PRIVATE "libeclair_ffi.a" "libzmq.a" mahi::gui)
+
+# Look for the ZeroMQ lib that was built by Cargo.
+file(GLOB_RECURSE CARGO_ZMQ_BUILD ${CXXBRIDGE_BUILD_DIR}/../release/build/*/out/lib/libzmq*.[a,lib])
+target_link_directories(eclair_gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../target/release/")
+target_link_libraries(eclair_gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../target/release/libeclair_ffi.a" ${CARGO_ZMQ_BUILD} mahi::gui)

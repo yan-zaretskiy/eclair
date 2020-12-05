@@ -16,4 +16,6 @@ plotting/.ipynb_checkpoints
 # Development notes
 /notes
 
-/eclair-gui/cmake-build-*
+/eclair-gui/cmake-build-debug
+/eclair-gui/cmake-build-release
+

@@ -3,6 +3,8 @@
 #include "ImGuiFileBrowser.h"
 #include <Mahi/Gui.hpp>
 
+#include <iostream>
+
 using namespace mahi::gui;
 using namespace mahi::util;
 
@@ -19,14 +21,14 @@ public:
     ImGui::DisableViewports();
     ImGui::EnableDocking();
 
-    ImPlotStyle& style = ImPlot::GetStyle();
+    ImPlotStyle &style = ImPlot::GetStyle();
     style.LineWeight = 2.0;
 
     on_file_drop.connect(this, &EclairApp::file_drop_handler);
   }
 
   void file_drop_handler(const std::vector<std::string> &paths) {
-    for (auto& path: paths) {
+    for (auto &path : paths) {
       manager->add_from_files(path, "");
     }
     items_dirty = true;
@@ -34,13 +36,17 @@ public:
 
   void update() override {
     // Window menu.
-    bool open = false;
+    bool add_from_file = false;
+    bool add_from_network = false;
+
     if (ImGui::BeginMainMenuBar()) {
       if (ImGui::BeginMenu("File")) {
         if (ImGui::MenuItem("Add from file")) {
-          open = true;
+          add_from_file = true;
         }
-        ImGui::MenuItem("Add from network");
+        if (ImGui::MenuItem("Add from network")) {
+          add_from_network = true;
+        }
         ImGui::Separator();
         if (ImGui::MenuItem("Quit")) {
         }
@@ -49,7 +55,8 @@ public:
       ImGui::EndMainMenuBar();
     }
 
-    if (open) {
+    // User requested to add Summary data from a file.
+    if (add_from_file) {
       ImGui::OpenPopup("Open File");
     }
 
@@ -58,6 +65,47 @@ public:
             ImVec2(700, 310), ".SMSPEC")) {
       manager->add_from_files(file_dialog.selected_path, "");
       items_dirty = true;
+    }
+
+    // User requested to add Summary data from a network stream.
+    if (add_from_network) {
+      ImGui::OpenPopup("Add From Network");
+      ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+      ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    }
+
+    if (ImGui::BeginPopupModal("Add From Network", NULL,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+      static char host[128] = "";
+      static int port = 23120;
+
+      ImGui::Text("Enter the network stream address.");
+      ImGui::SetNextItemWidth(35.0f);
+      ImGui::LabelText("##host_label", "Host:");
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(150.0f);
+      ImGui::InputText("##host", host, IM_ARRAYSIZE(host));
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(35.0f);
+      ImGui::LabelText("##port_label", "Port:");
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(100.0f);
+      ImGui::InputInt("##port", &port);
+
+      ImGui::Dummy(ImVec2(0.0f, 20.0f));
+      ImGui::Indent(230);
+      if (ImGui::Button("OK", ImVec2(50, 0))) {
+        manager->add_from_network(host, port, "eclair", "");
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SetItemDefaultFocus();
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel", ImVec2(50, 0))) {
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::Unindent(230);
+
+      ImGui::EndPopup();
     }
 
     // Main dock-space.
@@ -152,26 +200,29 @@ public:
     ImGui::SetNextWindowDockID(dockspaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("Chart");
 
-    static std::optional<std::string> y_label_str = std::nullopt;
-    static std::optional<rust::Vec<TimeStamps>> time = std::nullopt;
-    static std::optional<rust::Vec<TimeSeries>> data = std::nullopt;
+    static std::string y_label_str;
+    static rust::Vec<TimeStamps> time;
+    static rust::Vec<TimeSeries> data;
+
     const double adj_ratio = 0.02;
     static double min_time, max_time;
     static double min_data, max_data;
 
-    if (is_plot_dirty) {
+    bool has_new_data = manager->refresh();
+
+    if ((is_plot_dirty || has_new_data) && plotted_item_row != -1) {
       y_label_str = item_name(item_ids[plotted_item_row]);
 
       time = manager->unix_time();
       data = get_item_values(item_ids[plotted_item_row], manager);
 
-      std::tie(min_time, max_time) = time_range(time.value());
-      std::tie(min_data, max_data) = data_range(data.value());
+      std::tie(min_time, max_time) = time_range(time);
+      std::tie(min_data, max_data) = data_range(data);
     }
 
     const char *x_label = (plotted_item_row == -1) ? nullptr : "Date";
     const char *y_label =
-        (plotted_item_row == -1) ? nullptr : y_label_str.value().c_str();
+        (plotted_item_row == -1) ? nullptr : y_label_str.c_str();
 
     if (plotted_item_row != -1) {
       auto dx = adj_ratio * (max_time - min_time);
@@ -179,7 +230,7 @@ public:
       dy = (dy == 0) ? 0.5 : dy;
       ImPlot::SetNextPlotLimits(
           min_time - dx, max_time + dx, min_data - dy, max_data + dy,
-          is_plot_dirty ? ImGuiCond_Always : ImGuiCond_Once);
+          is_plot_dirty ? ImGuiCond_Always : ImGuiCond_Always);
     }
 
     if (ImPlot::BeginPlot(
@@ -187,10 +238,10 @@ public:
             ImVec2(ImGui::GetWindowWidth(), ImGui::GetWindowHeight() * 0.92f),
             ImPlotFlags_NoMousePos, ImPlotAxisFlags_Time)) {
       if (plotted_item_row != -1) {
-        for (int s = 0; s < data.value().size(); ++s) {
-          const auto &d = data.value()[s];
+        for (int s = 0; s < data.size(); ++s) {
+          const auto &d = data[s];
           if (!d.values.empty()) {
-            const auto &t = time.value()[s];
+            const auto &t = time[s];
             const auto line_name = std::string(manager->summary_name(s));
             ImPlot::PlotLine(line_name.data(), t.values.data(), d.values.data(),
                              t.values.size());

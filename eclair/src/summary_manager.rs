@@ -90,18 +90,19 @@ impl SummaryManager {
     }
 
     /// For each summary it tries to pull values from the corresponding receiver channel.
-    pub fn refresh(&mut self) -> Result<()> {
+    pub fn refresh(&mut self) -> Result<bool> {
+        let mut new_values = false;
         for summary in &mut self.summaries {
             loop {
                 if let Ok(params) = summary.receiver.try_recv() {
-                    println!("Received params: {:?}", params);
+                    new_values = true;
                     summary.data.append(params);
                 } else {
                     break;
                 }
             }
         }
-        Ok(())
+        Ok(new_values)
     }
 
     pub fn all_item_ids(&self) -> HashSet<&ItemId> {
