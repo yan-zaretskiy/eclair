@@ -21,6 +21,19 @@ target_include_directories(
 # from external libraries, so we need to link to ZeroMQ manually.
 
 # Look for the ZeroMQ lib that was built by Cargo.
-file(GLOB_RECURSE CARGO_ZMQ_BUILD ${CXXBRIDGE_BUILD_DIR}/../release/build/*/out/lib/libzmq*.[a,lib])
+if(WIN32)
+    file(GLOB_RECURSE CARGO_ZMQ_BUILD "${CXXBRIDGE_BUILD_DIR}/../release/build/*/out/lib/zmq.lib")
+else()
+    file(GLOB_RECURSE CARGO_ZMQ_BUILD "${CXXBRIDGE_BUILD_DIR}/../release/build/*/out/lib/libzmq.a")
+endif()
+
+message("ZeroMQ static library: {$CARGO_ZMQ_BUILD}")
+message("Eclair FFI library: {$ECLAIR_FFI}")
+
 target_link_directories(eclair_gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../target/release/")
-target_link_libraries(eclair_gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../target/release/libeclair_ffi.a" ${CARGO_ZMQ_BUILD} mahi::gui)
+find_library(ECLAIR_FFI eclair_ffi PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../target/release/")
+target_link_libraries(eclair_gui PRIVATE "${ECLAIR_FFI}" "${CARGO_ZMQ_BUILD}" mahi::gui)
+
+if(WIN32)
+    target_link_libraries(eclair_gui PRIVATE Ws2_32.lib iphlpapi.lib userenv.lib)
+endif()
