@@ -235,7 +235,7 @@ public:
       dy = (dy == 0) ? 0.5 : dy;
       ImPlot::SetNextPlotLimits(
           min_time - dx, max_time + dx, min_data - dy, max_data + dy,
-          is_plot_dirty ? ImGuiCond_Once : ImGuiCond_Always);
+          is_plot_dirty ? ImGuiCond_Always: ImGuiCond_Once);
     }
 
     if (ImPlot::BeginPlot(

@@ -109,6 +109,14 @@ impl UpdateSummary for ZmqUpdater {
                     .map(|chunk| read_f32(chunk))
                     .collect();
 
+                if params.len() != self.n_items {
+                    return Err(EclairError::UnexpectedRecordDataLength {
+                        name: "ZMQ_PARAMS".to_owned(),
+                        expected: self.n_items,
+                        found: params.len(),
+                    });
+                }
+
                 self.n_steps += 1;
 
                 if sender.send(params).is_err() {

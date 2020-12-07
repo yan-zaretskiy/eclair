@@ -512,23 +512,35 @@ impl UpdateSummary for SummaryFileUpdater {
     fn update(&mut self, sender: Sender<Vec<f32>>) -> Result<()> {
         // Continuously tries to read from the UNSMRY file and sends new values over the provided
         // channel.
+        let mut file_pos = self.unsmry_file.seek(SeekFrom::Current(0)).unwrap();
+
         loop {
             let metadata = self.unsmry_file.get_ref().metadata()?;
             let modified_time = metadata.modified()?;
             if self.last_read_successful || modified_time > self.modified_time {
                 self.modified_time = modified_time;
-                let params = get_next_params(&mut self.unsmry_file, self.n_steps, self.n_items)?;
-                if let Some((_, params)) = params {
-                    self.last_read_successful = true;
-                    self.n_steps += 1;
+                let params = get_next_params(&mut self.unsmry_file, self.n_steps, self.n_items);
 
-                    if sender.send(params).is_err() {
-                        log::debug!(target: "Updating Summary", "Error while sending params over a channel");
-                        return Ok(());
+                self.last_read_successful = match params {
+                    Ok(params) => {
+                        if let Some((n_bytes, params)) = params {
+                            file_pos += n_bytes as u64;
+                            self.n_steps += 1;
+
+                            if sender.send(params).is_err() {
+                                log::debug!(target: "Updating Summary", "Error while sending params over a channel");
+                                return Ok(());
+                            }
+                            true
+                        } else {
+                            false
+                        }
                     }
-                } else {
-                    self.last_read_successful = false;
-                }
+                    Err(_) => {
+                        self.unsmry_file.seek(SeekFrom::Start(file_pos)).unwrap();
+                        false
+                    }
+                };
             }
             sleep(Duration::from_millis(100));
         }
@@ -619,20 +631,30 @@ impl InitializeSummary for SummaryFileReader {
         let unsmry_size = self.unsmry_file.seek(SeekFrom::End(0)).unwrap();
         let mut unsmry_pos = self.unsmry_file.seek(SeekFrom::Start(0)).unwrap();
 
+        // We store the current file position before the read and try to read as many timestep data
+        // as we can.
         loop {
-            let params = get_next_params(&mut self.unsmry_file, n_steps, n_items)?;
+            let params = get_next_params(&mut self.unsmry_file, n_steps, n_items);
 
             match params {
-                None => break,
-                Some((n_bytes, params)) => {
-                    summary.append(params);
-                    n_steps += 1;
-                    unsmry_pos += n_bytes as u64;
-                    // In case we're reading from a file that's still being written to, we stop here
-                    // and continue reading during subsequent updates.
-                    if unsmry_pos >= unsmry_size {
-                        break;
+                Ok(params) => {
+                    match params {
+                        None => break,
+                        Some((n_bytes, params)) => {
+                            summary.append(params);
+                            n_steps += 1;
+                            unsmry_pos += n_bytes as u64;
+                            // In case we're reading from a file that's still being written to, we stop here
+                            // and continue reading during subsequent updates.
+                            if unsmry_pos >= unsmry_size {
+                                break;
+                            }
+                        }
                     }
+                }
+                Err(_) => {
+                    self.unsmry_file.seek(SeekFrom::Start(unsmry_pos)).unwrap();
+                    break;
                 }
             }
         }
