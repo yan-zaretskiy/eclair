@@ -40,7 +40,7 @@ use std::{
     convert::{TryFrom, TryInto},
     fmt::{Display, Formatter},
     fs::File,
-    io::{BufReader, SeekFrom},
+    io::{BufReader, Seek, SeekFrom},
     thread::sleep,
     time::Duration,
 };
@@ -433,17 +433,20 @@ pub trait UpdateSummary {
 }
 
 /// SummaryFileReader builds Summary data from file-like sources.
-pub struct SummaryFileReader<T> {
-    smspec_file: T,
-    unsmry_file: T,
+pub struct SummaryFileReader {
+    smspec_file: BufReader<File>,
+    unsmry_file: BufReader<File>,
 }
 
 /// FileUpdater updates Summary data from a file-like source.
-pub struct SummaryFileUpdater<T> {
-    unsmry_file: T,
+pub struct SummaryFileUpdater {
+    unsmry_file: BufReader<File>,
 
     n_items: usize,
     n_steps: usize,
+
+    modified_time: std::time::SystemTime,
+    last_read_successful: bool,
 }
 
 /// Scan the next two or three UNSMRY records and attempt to extract data for the next time
@@ -505,21 +508,26 @@ fn get_next_params<T: ReadRecord>(
     Ok(Some((n_bytes_read, params)))
 }
 
-impl<T> UpdateSummary for SummaryFileUpdater<T>
-where
-    T: std::io::Read + std::io::Seek,
-{
+impl UpdateSummary for SummaryFileUpdater {
     fn update(&mut self, sender: Sender<Vec<f32>>) -> Result<()> {
         // Continuously tries to read from the UNSMRY file and sends new values over the provided
         // channel.
         loop {
-            let params = get_next_params(&mut self.unsmry_file, self.n_steps, self.n_items)?;
-            if let Some((_, params)) = params {
-                self.n_steps += 1;
+            let metadata = self.unsmry_file.get_ref().metadata()?;
+            let modified_time = metadata.modified()?;
+            if self.last_read_successful || modified_time > self.modified_time {
+                self.modified_time = modified_time;
+                let params = get_next_params(&mut self.unsmry_file, self.n_steps, self.n_items)?;
+                if let Some((_, params)) = params {
+                    self.last_read_successful = true;
+                    self.n_steps += 1;
 
-                if sender.send(params).is_err() {
-                    log::debug!(target: "Updating Summary", "Error while sending params over a channel");
-                    return Ok(());
+                    if sender.send(params).is_err() {
+                        log::debug!(target: "Updating Summary", "Error while sending params over a channel");
+                        return Ok(());
+                    }
+                } else {
+                    self.last_read_successful = false;
                 }
             }
             sleep(Duration::from_millis(100));
@@ -527,7 +535,7 @@ where
     }
 }
 
-impl SummaryFileReader<BufReader<File>> {
+impl SummaryFileReader {
     pub fn from_path<P>(input_path: P) -> Result<Self>
     where
         P: AsRef<std::path::Path>,
@@ -560,11 +568,8 @@ impl SummaryFileReader<BufReader<File>> {
     }
 }
 
-impl<T> InitializeSummary for SummaryFileReader<T>
-where
-    T: std::io::Read + std::io::Seek + Send + 'static,
-{
-    type Updater = SummaryFileUpdater<T>;
+impl InitializeSummary for SummaryFileReader {
+    type Updater = SummaryFileUpdater;
 
     fn init(mut self) -> Result<(Summary, Self::Updater)> {
         use EclairError::*;
@@ -638,6 +643,8 @@ where
                 unsmry_file: self.unsmry_file,
                 n_items,
                 n_steps,
+                modified_time: std::time::SystemTime::now(),
+                last_read_successful: true,
             },
         ))
     }

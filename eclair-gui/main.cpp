@@ -90,7 +90,7 @@ public:
       ImGui::LabelText("##port_label", "Port:");
       ImGui::SameLine();
       ImGui::SetNextItemWidth(100.0f);
-      ImGui::InputInt("##port", &port);
+      ImGui::InputInt("##port", &port, 0);
 
       ImGui::Dummy(ImVec2(0.0f, 20.0f));
       ImGui::Indent(230);
@@ -161,34 +161,39 @@ public:
           ImGui::TableSetupColumn("Index");
           ImGui::TableHeadersRow();
 
-          int i = 0;
-          for (const auto &item_id : item_ids) {
-            const bool item_is_selected = (selection == i);
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            char label[32];
-            sprintf(label, "%02d", i);
-            if (ImGui::Selectable(label, item_is_selected,
-                                  ImGuiSelectableFlags_SpanAllColumns,
-                                  ImVec2(0, 0))) {
-              selection = i;
-            }
-            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-              ImGui::SetDragDropPayload("DND_PLOT", &i, sizeof(int));
-              ImGui::TextUnformatted(label);
-              ImGui::EndDragDropSource();
-            }
+          ImGuiListClipper clipper;
+          clipper.Begin(item_ids.size());
+          while (clipper.Step()) {
+            for (int row = clipper.DisplayStart; row < clipper.DisplayEnd;
+                 row++) {
+              const bool item_is_selected = (selection == row);
+              const auto &item_id = item_ids[row];
+              ImGui::TableNextRow();
+              ImGui::TableNextColumn();
+              char label[32];
+              sprintf(label, "%02d", row);
+              if (ImGui::Selectable(label, item_is_selected,
+                                    ImGuiSelectableFlags_SpanAllColumns,
+                                    ImVec2(0, 0))) {
+                selection = row;
+              }
+              if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+                ImGui::SetDragDropPayload("DND_PLOT", &row, sizeof(int));
+                ImGui::TextUnformatted(label);
+                ImGui::EndDragDropSource();
+              }
 
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(item_id.name.data(),
-                                   item_id.name.data() + item_id.name.length());
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(item_id.wg_name.data(),
-                                   item_id.wg_name.data() +
-                                       item_id.wg_name.length());
-            ImGui::TableNextColumn();
-            ImGui::Text("%d", item_id.index);
-            i++;
+              ImGui::TableNextColumn();
+              ImGui::TextUnformatted(item_id.name.data(),
+                                     item_id.name.data() +
+                                         item_id.name.length());
+              ImGui::TableNextColumn();
+              ImGui::TextUnformatted(item_id.wg_name.data(),
+                                     item_id.wg_name.data() +
+                                         item_id.wg_name.length());
+              ImGui::TableNextColumn();
+              ImGui::Text("%d", item_id.index);
+            }
           }
           ImGui::EndTable();
         }
@@ -208,7 +213,7 @@ public:
     static double min_time, max_time;
     static double min_data, max_data;
 
-    bool has_new_data = manager->refresh();
+    bool has_new_data = false; // manager->refresh();
 
     if ((is_plot_dirty || has_new_data) && plotted_item_row != -1) {
       y_label_str = item_name(item_ids[plotted_item_row]);
@@ -230,7 +235,7 @@ public:
       dy = (dy == 0) ? 0.5 : dy;
       ImPlot::SetNextPlotLimits(
           min_time - dx, max_time + dx, min_data - dy, max_data + dy,
-          is_plot_dirty ? ImGuiCond_Always : ImGuiCond_Always);
+          is_plot_dirty ? ImGuiCond_Once : ImGuiCond_Always);
     }
 
     if (ImPlot::BeginPlot(
