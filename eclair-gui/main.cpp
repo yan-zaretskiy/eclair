@@ -24,6 +24,7 @@ public:
     ImPlotStyle &style = ImPlot::GetStyle();
     style.LineWeight = 2.0;
     style.FitPadding = ImVec2(0.05f, 0.05f);
+    style.PlotPadding= ImVec2(0,0);
 
     on_file_drop.connect(this, &EclairApp::file_drop_handler);
   }
@@ -222,7 +223,7 @@ public:
     ImGui::End();
 
     ImGui::SetNextWindowDockID(dockspaceID, ImGuiCond_FirstUseEver);
-    ImGui::Begin("Chart");
+    ImGui::Begin("Chart", nullptr, ImGuiWindowFlags_NoScrollbar);
 
     static std::string y_label_str;
     static rust::Vec<TimeStamps> time;
@@ -253,7 +254,7 @@ public:
 
     if (ImPlot::BeginPlot(
             "##DND", x_label, y_label,
-            ImVec2(ImGui::GetWindowWidth(), ImGui::GetWindowHeight() * 0.92f),
+            ImVec2(ImGui::GetWindowWidth(), ImGui::GetWindowHeight() - ImGui::GetCursorPosY()),
             ImPlotFlags_NoMousePos, ImPlotAxisFlags_Time)) {
       if (plotted_item_row != -1) {
         for (int s = 0; s < data.size(); ++s) {
