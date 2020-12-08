@@ -23,6 +23,7 @@ public:
 
     ImPlotStyle &style = ImPlot::GetStyle();
     style.LineWeight = 2.0;
+    style.FitPadding = ImVec2(0.05f, 0.05f);
 
     on_file_drop.connect(this, &EclairApp::file_drop_handler);
   }
@@ -229,13 +230,8 @@ public:
     const char *y_label =
         (plotted_item_row == -1) ? nullptr : y_label_str.c_str();
 
-    if (plotted_item_row != -1) {
-      auto dx = adj_ratio * (max_time - min_time);
-      auto dy = adj_ratio * (max_data - min_data);
-      dy = (dy == 0) ? 0.5 : dy;
-      ImPlot::SetNextPlotLimits(
-          min_time - dx, max_time + dx, min_data - dy, max_data + dy,
-          is_plot_dirty ? ImGuiCond_Always: ImGuiCond_Once);
+    if (is_plot_dirty) {
+      ImPlot::FitNextPlotAxes(true, true, false, false);
     }
 
     if (ImPlot::BeginPlot(

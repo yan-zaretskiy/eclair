@@ -6,9 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CXXBRIDGE_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../target/cxxbridge")
 
 # Add GUI
-include(FetchContent)
-FetchContent_Declare(mahi-gui GIT_REPOSITORY https://github.com/mahilab/mahi-gui.git)
-FetchContent_MakeAvailable(mahi-gui)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/deps/mahi-gui")
 
 add_executable(eclair_gui main.cpp utils.cpp deps/ImGuiFileBrowser.cpp "${CXXBRIDGE_BUILD_DIR}/eclair-ffi/src/eclair_ffi.rs.cc")
 
@@ -27,8 +25,8 @@ else()
     file(GLOB_RECURSE CARGO_ZMQ_BUILD "${CXXBRIDGE_BUILD_DIR}/../release/build/*/out/lib/libzmq.a")
 endif()
 
-message("ZeroMQ static library: {$CARGO_ZMQ_BUILD}")
-message("Eclair FFI library: {$ECLAIR_FFI}")
+message("ZeroMQ static library: ${CARGO_ZMQ_BUILD}")
+message("Eclair FFI library: ${ECLAIR_FFI}")
 
 target_link_directories(eclair_gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../target/release/")
 find_library(ECLAIR_FFI eclair_ffi PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../target/release/")
