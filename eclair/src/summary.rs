@@ -444,9 +444,6 @@ pub struct SummaryFileUpdater {
 
     n_items: usize,
     n_steps: usize,
-
-    modified_time: std::time::SystemTime,
-    last_read_successful: bool,
 }
 
 /// Scan the next two or three UNSMRY records and attempt to extract data for the next time
@@ -513,15 +510,18 @@ impl UpdateSummary for SummaryFileUpdater {
         // Continuously tries to read from the UNSMRY file and sends new values over the provided
         // channel.
         let mut file_pos = self.unsmry_file.seek(SeekFrom::Current(0)).unwrap();
+        let mut last_read_successful = true;
+        let mut modified_time = std::time::SystemTime::now();
 
         loop {
             let metadata = self.unsmry_file.get_ref().metadata()?;
-            let modified_time = metadata.modified()?;
-            if self.last_read_successful || modified_time > self.modified_time {
-                self.modified_time = modified_time;
+            let new_modified_time = metadata.modified()?;
+
+            if last_read_successful || new_modified_time > modified_time {
+                modified_time = new_modified_time;
                 let params = get_next_params(&mut self.unsmry_file, self.n_steps, self.n_items);
 
-                self.last_read_successful = match params {
+                last_read_successful = match params {
                     Ok(params) => {
                         if let Some((n_bytes, params)) = params {
                             file_pos += n_bytes as u64;
@@ -665,8 +665,6 @@ impl InitializeSummary for SummaryFileReader {
                 unsmry_file: self.unsmry_file,
                 n_items,
                 n_steps,
-                modified_time: std::time::SystemTime::now(),
-                last_read_successful: true,
             },
         ))
     }
