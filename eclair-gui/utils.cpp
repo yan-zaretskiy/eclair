@@ -1,7 +1,8 @@
 #include "cxx.h"
 #include "eclair_ffi.rs.h"
 
-#include "sstream"
+#include <sstream>
+#include <tuple>
 
 std::string to_string(const ItemQualifier &q) {
   switch (q) {

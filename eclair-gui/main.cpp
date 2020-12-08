@@ -3,7 +3,7 @@
 #include "ImGuiFileBrowser.h"
 #include <Mahi/Gui.hpp>
 
-#include <iostream>
+#include <tuple>
 
 using namespace mahi::gui;
 using namespace mahi::util;
@@ -133,6 +133,8 @@ public:
 
     // Data window.
     int selection = -1;
+    int to_be_removed = -1;
+
     ImGui::SetNextWindowDockID(dockspaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("Data");
 
@@ -140,9 +142,25 @@ public:
       if (ImGui::CollapsingHeader("Sources", ImGuiTreeNodeFlags_DefaultOpen)) {
         for (int i = 0; i < manager->length(); i++) {
           auto name = manager->summary_name(i);
+          if (ImGui::SmallButton(ICON_FA_TIMES)) {
+            to_be_removed = i;
+          }
+          ImGui::SameLine();
           ImGui::TextUnformatted(name.data(), name.data() + name.size());
         }
       }
+
+      if (to_be_removed != -1) {
+        manager->remove(to_be_removed);
+        is_plot_dirty = true;
+        items_dirty = true;
+        if (manager->length() == 0) {
+          plotted_item_row = -1;
+        }
+      }
+    }
+
+    if (manager->length() > 0) {
       if (ImGui::CollapsingHeader("Items", ImGuiTreeNodeFlags_DefaultOpen)) {
         if (items_dirty) {
           item_ids = manager->all_item_ids();
@@ -210,11 +228,10 @@ public:
     static rust::Vec<TimeStamps> time;
     static rust::Vec<TimeSeries> data;
 
-    const double adj_ratio = 0.02;
     static double min_time, max_time;
     static double min_data, max_data;
 
-    bool has_new_data = false; // manager->refresh();
+    bool has_new_data = manager->refresh();
 
     if ((is_plot_dirty || has_new_data) && plotted_item_row != -1) {
       y_label_str = item_name(item_ids[plotted_item_row]);
@@ -264,8 +281,6 @@ public:
       ImPlot::EndPlot();
     }
     ImGui::End();
-
-    ImGui::SetNextWindowDockID(dockspaceID, ImGuiCond_FirstUseEver);
   }
 
 private:

@@ -54,6 +54,8 @@ mod ffi {
             name: &str,
         ) -> Result<()>;
 
+        fn remove(&mut self, index: usize) -> Result<()>;
+
         fn refresh(&mut self) -> Result<bool>;
 
         fn length(&self) -> usize;
@@ -145,6 +147,10 @@ impl SummaryManager {
             identity,
             if name.is_empty() { None } else { Some(name) },
         )
+    }
+
+    pub fn remove(&mut self, index: usize) -> Result<(), EclairError> {
+        self.0.remove(index)
     }
 
     pub fn refresh(&mut self) -> Result<bool, EclairError> {

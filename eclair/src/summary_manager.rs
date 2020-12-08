@@ -54,6 +54,11 @@ impl SummaryManager {
         Ok(())
     }
 
+    pub fn remove(&mut self, index: usize) -> Result<()> {
+        self.summaries.remove(index);
+        Ok(())
+    }
+
     /// Add a new file-based summary data source.
     pub fn add_from_files<P>(&mut self, input_path: P, name: Option<&str>) -> Result<()>
     where
