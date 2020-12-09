@@ -2,6 +2,7 @@
 
 #include "ImGuiFileBrowser.h"
 #include <Mahi/Gui.hpp>
+#include <Mahi/Util.hpp>
 
 #include <tuple>
 
@@ -143,7 +144,8 @@ public:
       if (ImGui::CollapsingHeader("Sources", ImGuiTreeNodeFlags_DefaultOpen)) {
         for (int i = 0; i < manager->length(); i++) {
           auto name = manager->summary_name(i);
-          if (ImGui::SmallButton(ICON_FA_TIMES)) {
+          std::string label = ICON_FA_TIMES"##" + std::to_string(i);
+          if (ImGui::SmallButton(label.c_str())) {
             to_be_removed = i;
           }
           ImGui::SameLine();
@@ -190,16 +192,15 @@ public:
               const auto &item_id = item_ids[row];
               ImGui::TableNextRow();
               ImGui::TableNextColumn();
-              char label[32];
-              sprintf(label, "%02d", row);
-              if (ImGui::Selectable(label, item_is_selected,
+              std::string label = std::to_string(row);
+              if (ImGui::Selectable(label.c_str(), item_is_selected,
                                     ImGuiSelectableFlags_SpanAllColumns,
                                     ImVec2(0, 0))) {
                 selection = row;
               }
               if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
                 ImGui::SetDragDropPayload("DND_PLOT", &row, sizeof(int));
-                ImGui::TextUnformatted(label);
+                ImGui::TextUnformatted(label.c_str());
                 ImGui::EndDragDropSource();
               }
 

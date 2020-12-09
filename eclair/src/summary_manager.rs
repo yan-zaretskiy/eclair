@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::HashSet, thread};
 
 use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 
 #[cfg(feature = "read_zmq")]
 use crate::zmq::ZmqConnection;
@@ -16,7 +16,12 @@ struct UpdatableSummary {
     name: String,
     data: Summary,
     updater_thread: thread::JoinHandle<()>,
-    receiver: Receiver<Vec<f32>>,
+
+    // To receive data from the updater threads
+    data_rcv: Receiver<Vec<f32>>,
+
+    // To signal the threads that they need to terminate.
+    term_snd: Sender<bool>,
 }
 
 /// SummaryManager owns all summary data from multiple sources. It can update the data and accept
@@ -36,10 +41,12 @@ impl SummaryManager {
         let (data, mut updater) = reader.init()?;
 
         // TODO: Once I'm done experimenting, make the channel size a SummaryManager config option.
-        let (sender, receiver) = crossbeam_channel::bounded(10);
+        let (data_snd, data_rcv) = crossbeam_channel::bounded(10);
+
+        let (term_snd, term_rcv) = crossbeam_channel::bounded(1);
 
         let updater_thread = thread::spawn(move || {
-            if let Err(err) = updater.update(sender) {
+            if let Err(err) = updater.update(data_snd, term_rcv) {
                 println!("Error during updating: {}", err);
             }
         });
@@ -48,14 +55,26 @@ impl SummaryManager {
             name: name.to_string(),
             data,
             updater_thread,
-            receiver,
+            data_rcv,
+            term_snd,
         });
 
         Ok(())
     }
 
     pub fn remove(&mut self, index: usize) -> Result<()> {
-        self.summaries.remove(index);
+        // This should not fail unless there's a bug.
+        self.summaries[index]
+            .term_snd
+            .send(true)
+            .expect("Error sending a term request to the summary thread.");
+
+        self.summaries
+            .remove(index)
+            .updater_thread
+            .join()
+            .expect("Error when waiting for the summary thread to join");
+
         Ok(())
     }
 
@@ -99,7 +118,7 @@ impl SummaryManager {
         let mut new_values = false;
         for summary in &mut self.summaries {
             loop {
-                if let Ok(params) = summary.receiver.try_recv() {
+                if let Ok(params) = summary.data_rcv.try_recv() {
                     new_values = true;
                     summary.data.append(params);
                 } else {

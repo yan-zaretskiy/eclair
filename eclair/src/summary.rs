@@ -45,7 +45,7 @@ use std::{
     time::Duration,
 };
 
-use crossbeam_channel::Sender;
+use crossbeam_channel::{Receiver, Sender};
 use itertools::multizip;
 use once_cell::sync::Lazy;
 
@@ -429,7 +429,7 @@ pub trait InitializeSummary {
 
 /// UpdateSummary implementations provide new summary data using the supplied channel.
 pub trait UpdateSummary {
-    fn update(&mut self, sender: Sender<Vec<f32>>) -> Result<()>;
+    fn update(&mut self, data_snd: Sender<Vec<f32>>, term_rcv: Receiver<bool>) -> Result<()>;
 }
 
 /// SummaryFileReader builds Summary data from file-like sources.
@@ -506,7 +506,7 @@ fn get_next_params<T: ReadRecord>(
 }
 
 impl UpdateSummary for SummaryFileUpdater {
-    fn update(&mut self, sender: Sender<Vec<f32>>) -> Result<()> {
+    fn update(&mut self, data_snd: Sender<Vec<f32>>, term_rcv: Receiver<bool>) -> Result<()> {
         // Continuously tries to read from the UNSMRY file and sends new values over the provided
         // channel.
         let mut file_pos = self.unsmry_file.seek(SeekFrom::Current(0)).unwrap();
@@ -514,6 +514,12 @@ impl UpdateSummary for SummaryFileUpdater {
         let mut modified_time = std::time::SystemTime::now();
 
         loop {
+            // First check if we were instructed to stop.
+            if let Ok(_) = term_rcv.try_recv() {
+                return Ok(());
+            }
+
+            // Try to read from the file if necessary.
             let metadata = self.unsmry_file.get_ref().metadata()?;
             let new_modified_time = metadata.modified()?;
 
@@ -527,7 +533,7 @@ impl UpdateSummary for SummaryFileUpdater {
                             file_pos += n_bytes as u64;
                             self.n_steps += 1;
 
-                            if sender.send(params).is_err() {
+                            if data_snd.send(params).is_err() {
                                 log::debug!(target: "Updating Summary", "Error while sending params over a channel");
                                 return Ok(());
                             }

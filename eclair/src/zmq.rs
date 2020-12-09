@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use crossbeam_channel::Sender;
+use crossbeam_channel::{Receiver, Sender};
 use serde::Deserialize;
 
 use crate::{
@@ -75,7 +75,7 @@ pub struct ZmqUpdater {
 }
 
 impl UpdateSummary for ZmqUpdater {
-    fn update(&mut self, sender: Sender<Vec<f32>>) -> Result<()> {
+    fn update(&mut self, data_snd: Sender<Vec<f32>>, term_rcv: Receiver<bool>) -> Result<()> {
         let mut items = [
             self.conn.monitor.as_poll_item(zmq::POLLIN),
             self.conn.sock.as_poll_item(zmq::POLLIN),
@@ -83,6 +83,11 @@ impl UpdateSummary for ZmqUpdater {
 
         let mut is_connected = true;
         loop {
+            // First check if we were instructed to stop.
+            if let Ok(_) = term_rcv.try_recv() {
+                return Ok(());
+            }
+
             zmq::poll(&mut items, 0)?;
 
             if is_connected && items[0].is_readable() {
@@ -119,7 +124,7 @@ impl UpdateSummary for ZmqUpdater {
 
                 self.n_steps += 1;
 
-                if sender.send(params).is_err() {
+                if data_snd.send(params).is_err() {
                     log::debug!(target: "Updating Summary", "Error while sending params over a channel");
                     return Ok(());
                 }
