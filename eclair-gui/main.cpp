@@ -1,6 +1,8 @@
 #include "eclair_ffi.rs.h"
 
+#include "FilteredVector.h"
 #include "ImGuiFileBrowser.h"
+
 #include <Mahi/Gui.hpp>
 #include <Mahi/Util.hpp>
 
@@ -19,13 +21,14 @@ std::tuple<double, double> data_range(const rust::Vec<TimeSeries> &data);
 class EclairApp : public Application {
 public:
   EclairApp() : Application(800, 600, "Eclair"), manager(make_manager()) {
+    enable_logger();
     ImGui::DisableViewports();
     ImGui::EnableDocking();
 
     ImPlotStyle &style = ImPlot::GetStyle();
     style.LineWeight = 2.0;
     style.FitPadding = ImVec2(0.05f, 0.05f);
-    style.PlotPadding= ImVec2(0,0);
+    style.PlotPadding = ImVec2(0, 0);
 
     on_file_drop.connect(this, &EclairApp::file_drop_handler);
   }
@@ -77,7 +80,7 @@ public:
       ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     }
 
-    if (ImGui::BeginPopupModal("Add From Network", NULL,
+    if (ImGui::BeginPopupModal("Add From Network", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
       static char host[128] = "";
       static int port = 23120;
@@ -144,7 +147,7 @@ public:
       if (ImGui::CollapsingHeader("Sources", ImGuiTreeNodeFlags_DefaultOpen)) {
         for (int i = 0; i < manager->length(); i++) {
           auto name = manager->summary_name(i);
-          std::string label = ICON_FA_TIMES"##" + std::to_string(i);
+          std::string label = fmt::format(ICON_FA_TIMES "##{}", i);
           if (ImGui::SmallButton(label.c_str())) {
             to_be_removed = i;
           }
@@ -170,36 +173,56 @@ public:
           items_dirty = false;
         }
 
-        static ImGuiTableFlags flags =
-            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-            ImGuiTableFlags_ScrollY | ImGuiTableFlags_ColumnsWidthFixed;
+        static ImGuiTableFlags flags = ImGuiTableFlags_Borders |
+                                       ImGuiTableFlags_RowBg |
+                                       ImGuiTableFlags_ScrollY;
 
-        if (ImGui::BeginTable("##table1", 4, flags)) {
-          ImGui::TableSetupScrollFreeze(0, 1);
-          ImGui::TableSetupColumn("#");
+        const int COLUMNS_COUNT = 4;
+
+        if (ImGui::BeginTable("##table1", COLUMNS_COUNT, flags)) {
+          ImGui::TableSetupScrollFreeze(0, 2);
+          ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 30.0f);
           ImGui::TableSetupColumn("Name");
-          //          ImGui::TableSetupColumn("Type");
           ImGui::TableSetupColumn("Well/Group");
           ImGui::TableSetupColumn("Index");
+
+          // header row
           ImGui::TableHeadersRow();
 
+          // filters row
+          ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+          ImGui::TableSetColumnIndex(1);
+          name_filter.Draw("##name_filter", ImGui::GetContentRegionAvail().x);
+          ImGui::TableSetColumnIndex(2);
+          wg_filter.Draw("##wg_filter", ImGui::GetContentRegionAvail().x);
+          ImGui::TableSetColumnIndex(3);
+          idx_filter.Draw("##idx_filter", ImGui::GetContentRegionAvail().x);
+
+          // data rows
+          FilteredVector filtered_items(
+              item_ids, [this](auto &&PH1) -> bool {
+                return PassFilter(std::forward<decltype(PH1)>(PH1));
+              });
+
           ImGuiListClipper clipper;
-          clipper.Begin(item_ids.size());
+          clipper.Begin(filtered_items.size());
           while (clipper.Step()) {
             for (int row = clipper.DisplayStart; row < clipper.DisplayEnd;
                  row++) {
-              const bool item_is_selected = (selection == row);
-              const auto &item_id = item_ids[row];
+              int real_row = filtered_items.original_idx(row);
+              const bool item_is_selected = (selection == real_row);
+              const auto &item_id = filtered_items[row];
+
               ImGui::TableNextRow();
               ImGui::TableNextColumn();
-              std::string label = std::to_string(row);
+              std::string label = std::to_string(real_row);
               if (ImGui::Selectable(label.c_str(), item_is_selected,
                                     ImGuiSelectableFlags_SpanAllColumns,
                                     ImVec2(0, 0))) {
-                selection = row;
+                selection = real_row;
               }
               if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-                ImGui::SetDragDropPayload("DND_PLOT", &row, sizeof(int));
+                ImGui::SetDragDropPayload("DND_PLOT", &real_row, sizeof(int));
                 ImGui::TextUnformatted(label.c_str());
                 ImGui::EndDragDropSource();
               }
@@ -213,7 +236,9 @@ public:
                                      item_id.wg_name.data() +
                                          item_id.wg_name.length());
               ImGui::TableNextColumn();
-              ImGui::Text("%d", item_id.index);
+              if (item_id.index != -1) {
+                ImGui::Text("%d", item_id.index);
+              }
             }
           }
           ImGui::EndTable();
@@ -255,7 +280,8 @@ public:
 
     if (ImPlot::BeginPlot(
             "##DND", x_label, y_label,
-            ImVec2(ImGui::GetWindowWidth(), ImGui::GetWindowHeight() - ImGui::GetCursorPosY()),
+            ImVec2(ImGui::GetWindowWidth(),
+                   ImGui::GetWindowHeight() - ImGui::GetCursorPosY()),
             ImPlotFlags_NoMousePos, ImPlotAxisFlags_Time)) {
       if (plotted_item_row != -1) {
         for (int s = 0; s < data.size(); ++s) {
@@ -283,9 +309,29 @@ public:
       ImPlot::EndPlot();
     }
     ImGui::End();
+
+    // ImGui::ShowMetricsWindow();
+    // ImGui::ShowDemoWindow();
   }
 
 private:
+  bool PassFilter(const ItemId &item_id) {
+    bool pass_name_filter = name_filter.PassFilter(
+        item_id.name.data(), item_id.name.data() + item_id.name.size());
+
+    bool pass_wg_filter =
+        wg_filter.PassFilter(item_id.wg_name.data(),
+                             item_id.wg_name.data() + item_id.wg_name.size());
+
+    std::string idx_str =
+        (item_id.index == -1) ? "" : fmt::format("{}", item_id.index);
+
+    bool pass_idx_filter =
+        idx_filter.PassFilter(idx_str.data(), idx_str.data() + idx_str.size());
+
+    return pass_name_filter && pass_wg_filter && pass_idx_filter;
+  }
+
   rust::Box<SummaryManager> manager;
   imgui_addons::ImGuiFileBrowser file_dialog;
   bool items_dirty = true;
@@ -293,6 +339,11 @@ private:
 
   int plotted_item_row = -1;
   bool is_plot_dirty = false;
+
+  /* Data filtering */
+  ImGuiTextFilter name_filter;
+  ImGuiTextFilter wg_filter;
+  ImGuiTextFilter idx_filter;
 };
 
 int main() {

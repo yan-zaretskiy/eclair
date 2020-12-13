@@ -59,6 +59,8 @@ impl SummaryManager {
             term_snd,
         });
 
+        log::info!(target: "Summary Manager", "Added new summary object: {}", name);
+
         Ok(())
     }
 
@@ -69,9 +71,11 @@ impl SummaryManager {
             .send(true)
             .expect("Error sending a term request to the summary thread.");
 
-        self.summaries
-            .remove(index)
-            .updater_thread
+        let s = self.summaries.remove(index);
+
+        log::info!(target: "Summary Manager", "Removed summary object: {}", s.name);
+
+        s.updater_thread
             .join()
             .expect("Error when waiting for the summary thread to join");
 

@@ -516,6 +516,10 @@ impl UpdateSummary for SummaryFileUpdater {
         loop {
             // First check if we were instructed to stop.
             if let Ok(_) = term_rcv.try_recv() {
+                log::info!(
+                    target: "SummaryFileUpdater::update",
+                    "Received termination request."
+                );
                 return Ok(());
             }
 
@@ -534,7 +538,7 @@ impl UpdateSummary for SummaryFileUpdater {
                             self.n_steps += 1;
 
                             if data_snd.send(params).is_err() {
-                                log::debug!(target: "Updating Summary", "Error while sending params over a channel");
+                                log::info!(target: "SummaryFileUpdater::update", "Error while sending params over a channel");
                                 return Ok(());
                             }
                             true

@@ -43,6 +43,8 @@ mod ffi {
     extern "Rust" {
         type SummaryManager;
 
+        fn enable_logger();
+
         fn make_manager() -> Box<SummaryManager>;
 
         fn add_from_files(&mut self, input_path: &str, name: &str) -> Result<()>;
@@ -123,6 +125,12 @@ impl From<&EclItemId> for ffi::ItemId {
 
 // Simple wrapper around the actual SummaryManager, required by cxx.
 pub struct SummaryManager(EclSM);
+
+pub fn enable_logger() {
+    env_logger::builder()
+        .filter(None, log::LevelFilter::Info)
+        .init()
+}
 
 pub fn make_manager() -> Box<SummaryManager> {
     Box::new(SummaryManager(EclSM::new()))
