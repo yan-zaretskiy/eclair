@@ -24,7 +24,7 @@ jobs:
           profile: minimal
       
       - name: Build eclair-ffi
-        run: cargo build --release -all
+        run: cargo build --release --all
 
       - name: Build Release
 #         if: matrix.os == 'macos-latest'
