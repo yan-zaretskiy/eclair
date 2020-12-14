@@ -2,11 +2,10 @@
 
 members = [
     "eclair",
-    "eclair-web/crate",
-    "eclpy",
+    "eclair-ffi",
 ]
 
 default-members = ["eclair"]
 
-[profile.release]
-panic = 'abort'
+#[profile.release]
+#panic = 'abort'

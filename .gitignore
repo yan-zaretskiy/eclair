@@ -12,3 +12,10 @@ plotting/.ipynb_checkpoints
 
 # Python cache
 **/__pycache__
+
+# Development notes
+/notes
+
+/eclair-gui/cmake-build-debug
+/eclair-gui/cmake-build-release
+
