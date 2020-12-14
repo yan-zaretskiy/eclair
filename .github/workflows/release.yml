@@ -39,9 +39,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          name: Release ${{ github.ref }}
           draft: true,
-          files: ./eclair_gui*
+          files: eclair-gui/build/eclair_gui*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             
