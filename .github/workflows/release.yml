@@ -1,0 +1,35 @@
+name: Build-Release
+
+on:
+  workflow_dispatch:
+#   push:
+#     branches: [master]
+
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+#     if: "contains(github.event.head_commit.message, '[Release]')"
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+      
+      - name: Build eclair-ffi
+        run: cargo build --release -all
+
+      - name: Build Release
+#         if: matrix.os == 'macos-latest'
+        run: |
+          mkdir eclair-gui/build
+          cd eclair-gui/build
+          cmake -DCMAKE_BUILD_TYPE=Release ..
+          cmake --build . --target eclair_gui
