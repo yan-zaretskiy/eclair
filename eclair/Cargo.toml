@@ -1,15 +1,10 @@
 [package]
-name = "eclair-io"
+name = "eclair"
 version = "0.1.0"
 authors = ["Yan Zaretskiy <yan@fastmail.com>"]
 edition = "2018"
 
-[[bin]]
-name = "eclair-io"
-required-features = ["bin"]
-
 [features]
-bin = ["env_logger", "zmq"]
 read_zmq = ["zmq"]
 vendored-zmq = ['zmq/vendored']
 

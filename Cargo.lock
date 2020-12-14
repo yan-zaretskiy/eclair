@@ -155,18 +155,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "eclair-ffi"
-version = "0.1.0"
-dependencies = [
- "cxx",
- "cxx-build",
- "eclair-io",
- "env_logger 0.8.2",
- "log",
-]
-
-[[package]]
-name = "eclair-io"
+name = "eclair"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -180,6 +169,17 @@ dependencies = [
  "smallstr",
  "thiserror",
  "zmq",
+]
+
+[[package]]
+name = "eclair-ffi"
+version = "0.1.0"
+dependencies = [
+ "cxx",
+ "cxx-build",
+ "eclair",
+ "env_logger 0.8.2",
+ "log",
 ]
 
 [[package]]

@@ -5,8 +5,8 @@ authors = ["Yan Zaretskiy <yan@fastmail.com>"]
 edition = "2018"
 
 [dependencies]
-eclair-io = { path = "../eclair", features = ["read_zmq", "vendored-zmq"] }
-env_logger = { version = "0.8"}
+eclair = { path = "../eclair", features = ["read_zmq", "vendored-zmq"] }
+env_logger = "0.8"
 cxx = "1.0"
 log = "0.4"
 

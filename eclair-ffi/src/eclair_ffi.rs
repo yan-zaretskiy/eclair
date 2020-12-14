@@ -1,4 +1,4 @@
-use eclair_io::{
+use eclair::{
     error::EclairError,
     summary::{ItemId as EclItemId, ItemQualifier as EclQualifier},
     summary_manager::SummaryManager as EclSM,
