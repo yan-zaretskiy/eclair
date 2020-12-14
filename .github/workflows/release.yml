@@ -33,3 +33,15 @@ jobs:
           cd eclair-gui/build
           cmake -DCMAKE_BUILD_TYPE=Release ..
           cmake --build . --target eclair_gui --config Release
+
+      # Draft a new release & attach the produced binaries.
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: true,
+          files: ./eclair_gui*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            
