@@ -4,7 +4,7 @@ use eclair_io::{
     summary_manager::SummaryManager as EclSM,
 };
 
-#[cxx::bridge]
+#[cxx::bridge(namespace = "eclair")]
 mod ffi {
     #[derive(PartialEq, Eq, PartialOrd, Ord)]
     pub(crate) enum ItemQualifier {

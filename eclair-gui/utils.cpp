@@ -4,6 +4,8 @@
 #include <sstream>
 #include <tuple>
 
+namespace eclair {
+
 std::string to_string(const ItemQualifier &q) {
   switch (q) {
   case ItemQualifier::Time:
@@ -128,3 +130,5 @@ std::tuple<double, double> data_range(const rust::Vec<TimeSeries> &data) {
   }
   return {min, max};
 }
+
+} // namespace eclair

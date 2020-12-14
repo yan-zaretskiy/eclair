@@ -3,6 +3,9 @@
 
 #include <vector>
 
+namespace eclair {
+
+// A const view into a vector filtered by a predicate.
 template <typename V, typename Predicate> class FilteredVector {
 public:
   FilteredVector(const V &vec, Predicate p) : vec{vec} {
@@ -24,5 +27,7 @@ private:
   const V &vec;
   std::vector<size_t> indices;
 };
+
+} // namespace eclair
 
 #endif // ECLAIR_GUI_FILTEREDVECTOR_H
