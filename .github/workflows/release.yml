@@ -32,4 +32,4 @@ jobs:
           mkdir eclair-gui/build
           cd eclair-gui/build
           cmake -DCMAKE_BUILD_TYPE=Release ..
-          cmake --build . --target eclair_gui
+          cmake --build . --target eclair_gui --config Release
