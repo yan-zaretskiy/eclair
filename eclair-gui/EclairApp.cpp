@@ -1,7 +1,7 @@
 #include "EclairApp.h"
 #include "FilteredVector.h"
 
-#include <tuple>
+#include "implot_internal.h"
 
 namespace eclair {
 
@@ -15,15 +15,19 @@ std::tuple<double, double> data_range(const rust::Vec<TimeSeries> &data);
 
 EclairApp::EclairApp()
     : Application(800, 600, "Eclair"), manager(make_manager()) {
+  // Logging for the Rust backend.
   enable_logger();
+
   ImGui::DisableViewports();
   ImGui::EnableDocking();
 
+  // ImPlot styling settings.
   ImPlotStyle &style = ImPlot::GetStyle();
   style.LineWeight = 2.0;
   style.FitPadding = ImVec2(0.05f, 0.05f);
   style.PlotPadding = ImVec2(0, 0);
 
+  // Event handlers.
   on_file_drop.connect(this, &EclairApp::file_drop_handler);
 }
 
@@ -36,25 +40,7 @@ void EclairApp::file_drop_handler(const std::vector<std::string> &paths) {
 
 void EclairApp::update() {
   // Window menu.
-  bool add_from_file = false;
-  bool add_from_network = false;
-
-  if (ImGui::BeginMainMenuBar()) {
-    if (ImGui::BeginMenu("File")) {
-      if (ImGui::MenuItem("Add from file")) {
-        add_from_file = true;
-      }
-      if (ImGui::MenuItem("Add from network")) {
-        add_from_network = true;
-      }
-      ImGui::Separator();
-      if (ImGui::MenuItem("Quit")) {
-        quit();
-      }
-      ImGui::EndMenu();
-    }
-    ImGui::EndMainMenuBar();
-  }
+  const auto [add_from_file, add_from_network] = draw_main_menu();
 
   // User requested to add Summary data from a file.
   if (add_from_file) {
@@ -182,16 +168,18 @@ void EclairApp::update() {
         ImGui::TableSetupColumn("Index");
 
         // header row
-        static ImGuiTextFilter* filters[3] = {&name_filter, &wg_filter, &idx_filter};
+        static ImGuiTextFilter *filters[3] = {&name_filter, &wg_filter,
+                                              &idx_filter};
         ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
         for (int column = 0; column < COLUMNS_COUNT; column++) {
           ImGui::TableSetColumnIndex(column);
-          const char* column_name = ImGui::TableGetColumnName(column); // Retrieve name passed to TableSetupColumn()
+          const char *column_name = ImGui::TableGetColumnName(
+              column); // Retrieve name passed to TableSetupColumn()
           ImGui::PushID(column);
           ImGui::TableHeader(column_name);
-          if (column > 0)
-          {
-            filters[column - 1]->Draw("##filter", ImGui::GetContentRegionAvail().x);
+          if (column > 0) {
+            filters[column - 1]->Draw("##filter",
+                                      ImGui::GetContentRegionAvail().x);
           }
           ImGui::PopID();
         }
@@ -241,15 +229,58 @@ void EclairApp::update() {
       }
     }
   }
-
   ImGui::End();
 
   ImGui::SetNextWindowDockID(dockspaceID, ImGuiCond_FirstUseEver);
+  ImGui::ShowDemoWindow();
+  draw_chart_window();
+}
+
+std::tuple<bool, bool> EclairApp::draw_main_menu() {
+  bool add_from_file = false;
+  bool add_from_network = false;
+
+  if (ImGui::BeginMainMenuBar()) {
+    if (ImGui::BeginMenu("File")) {
+      if (ImGui::MenuItem("Add from file")) {
+        add_from_file = true;
+      }
+      if (ImGui::MenuItem("Add from network")) {
+        add_from_network = true;
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Quit")) {
+        quit();
+      }
+      ImGui::EndMenu();
+    }
+    ImGui::EndMainMenuBar();
+  }
+
+  return {add_from_file, add_from_network};
+}
+
+template <typename T> size_t binary_search(const T *arr, int count, T x) {
+  size_t x_lo = 0, x_hi = count - 1;
+
+  while ((x_hi - x_lo) > 1) {
+    size_t ix = (x_lo + x_hi) >> 1;
+    if (x >= arr[ix]) {
+      x_lo = ix;
+    } else {
+      x_hi = ix;
+    }
+  }
+  return x_lo;
+}
+
+void EclairApp::draw_chart_window() {
   ImGui::Begin("Chart", nullptr, ImGuiWindowFlags_NoScrollbar);
 
   static std::string y_label_str;
   static rust::Vec<TimeStamps> time;
   static rust::Vec<TimeSeries> data;
+  static std::vector<std::string> line_names;
 
   static double min_time, max_time;
   static double min_data, max_data;
@@ -273,7 +304,8 @@ void EclairApp::update() {
   if (is_plot_dirty) {
     ImPlot::FitNextPlotAxes(true, true, false, false);
   }
-
+  static bool tooltip = true;
+  ImGui::Checkbox("Show Tooltip", &tooltip);
   if (ImPlot::BeginPlot(
           "##DND", x_label, y_label,
           ImVec2(ImGui::GetWindowWidth(),
@@ -281,15 +313,19 @@ void EclairApp::update() {
           ImPlotFlags_NoMousePos, ImPlotAxisFlags_Time)) {
     if (plotted_item_row != -1) {
       for (int s = 0; s < data.size(); ++s) {
-        const auto &d = data[s];
-        if (!d.values.empty()) {
-          const auto &t = time[s];
-          const auto line_name = std::string(manager->summary_name(s));
-          ImPlot::PlotLine(line_name.data(), t.values.data(), d.values.data(),
-                           t.values.size());
+        const auto &d = data[s].values;
+        if (!d.empty()) {
+          const auto &t = time[s].values;
+          const auto &name = line_names.emplace_back(manager->summary_name(s));
+          ImPlot::PlotLine(name.data(), t.data(), d.data(), t.size());
         }
       }
       is_plot_dirty = false;
+
+      // custom tooltip
+      if (tooltip && ImPlot::IsPlotHovered()) {
+        draw_plot_tooltip(time, data);
+      }
     }
 
     // make our plot a drag and drop target
@@ -307,7 +343,64 @@ void EclairApp::update() {
   ImGui::End();
 }
 
-bool EclairApp::PassFilter(const ItemId &item_id) {
+void EclairApp::draw_plot_tooltip(const rust::Vec<TimeStamps> &time,
+                                  const rust::Vec<TimeSeries> &data) {
+  ImDrawList *draw_list = ImPlot::GetPlotDrawList();
+  ImPlotPoint mouse = ImPlot::GetPlotMousePos();
+
+  float tool_l = ImPlot::PlotToPixels(mouse).x - 1.0f;
+  float tool_r = ImPlot::PlotToPixels(mouse).x + 1.0f;
+  float tool_t = ImPlot::GetPlotPos().y;
+  float tool_b = tool_t + ImPlot::GetPlotSize().y;
+
+  // Thin vertical line to indicate current x position.
+  ImPlot::PushPlotClipRect();
+  draw_list->AddRectFilled(ImVec2(tool_l, tool_t), ImVec2(tool_r, tool_b),
+                           IM_COL32(128, 128, 128, 64));
+  ImPlot::PopPlotClipRect();
+
+  ImGui::BeginTooltip();
+  bool first_time = true;
+  const float txt_ht = ImGui::GetTextLineHeight();
+  auto date_size = ImGui::CalcTextSize("2020-01-01 00:00:00 ");
+  for (int s = 0; s < data.size(); ++s) {
+    const auto &d = data[s].values;
+    if (!d.empty()) {
+      const auto &t = time[s].values;
+      auto idx = binary_search(t.data(), t.size(), mouse.x);
+      if (idx != -1) {
+        if (first_time) {
+          ImGui::Indent(txt_ht);
+          ImGui::Text("Date/Time");
+          ImGui::Unindent(txt_ht);
+          ImGui::SameLine();
+          ImGui::Indent(txt_ht + date_size.x);
+          ImGui::Text("Value");
+          ImGui::Unindent(txt_ht + date_size.x);
+          first_time = false;
+        }
+        char buff[32];
+        ImPlot::FormatDateTime(ImPlotTime::FromDouble(t[idx]), buff, 32,
+                               ImPlotDateTimeFmt{ImPlotDateFmt_DayMoYr,
+                                                 ImPlotTimeFmt_HrMinS, true,
+                                                 true});
+        auto curr_cursor = ImGui::GetCursorScreenPos();
+        auto color =
+            ImColor(ImPlot::GetCurrentPlot()->Items.GetByIndex(s)->Color);
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            curr_cursor + ImVec2(2, 2),
+            curr_cursor + ImVec2(txt_ht - 2, txt_ht - 2), color, 1);
+        ImGui::Indent(txt_ht);
+        ImGui::Text("%s %g", buff, d[idx]);
+        ImGui::Unindent(txt_ht);
+      }
+    }
+  }
+
+  ImGui::EndTooltip();
+}
+
+bool EclairApp::PassFilter(const ItemId &item_id) const {
   bool pass_name_filter = name_filter.PassFilter(
       item_id.name.data(), item_id.name.data() + item_id.name.size());
 

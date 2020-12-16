@@ -7,6 +7,8 @@
 #include <Mahi/Gui.hpp>
 #include <Mahi/Util.hpp>
 
+#include <tuple>
+
 using namespace mahi::gui;
 using namespace mahi::util;
 
@@ -18,10 +20,16 @@ public:
   void update() override;
 
 private:
+  std::tuple<bool, bool> draw_main_menu();
+
+  void draw_chart_window();
+  void draw_plot_tooltip(const rust::Vec<TimeStamps> &time,
+                         const rust::Vec<TimeSeries> &data);
+
   void file_drop_handler(const std::vector<std::string> &paths);
 
   // Item filter that combines name, well/group and index filters together.
-  bool PassFilter(const ItemId &item_id);
+  [[nodiscard]] bool PassFilter(const ItemId &item_id) const;
 
   rust::Box<SummaryManager> manager;
   imgui_addons::ImGuiFileBrowser file_dialog;

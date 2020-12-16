@@ -26,8 +26,7 @@ jobs:
       - name: Build eclair-ffi
         run: cargo build --release --all
 
-      - name: Build Release
-#         if: matrix.os == 'macos-latest'
+      - name: Build eclair-gui
         run: |
           mkdir eclair-gui/build
           cd eclair-gui/build
@@ -46,4 +45,3 @@ jobs:
             eclair-gui/build/Release/eclair_gui.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            
