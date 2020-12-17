@@ -6,14 +6,14 @@ Eclair is a GUI application to visualize summary outputs of the oil&gas reservoi
 
 ## Building Instructions
 
-Eclair consists of the Rust back-end and the C++ front-end. To build the application, one first need to compile the
-backend, using
+Eclair consists of the Rust back-end and the C++ front-end. To build the application, one first needs to compile the
+backend:
 
-```
-cargo build --release --all
-```
+- Install Rust and Cargo. Refer to https://rustup.rs/ for Rust installation instructions;
 
-Afterwards one needs to build the CMake project inside the `eclair-gui` folder. The `CMakeLists.txt` is setup to
+- Inside the repo run `cargo build --release --all`
+
+Afterwards one needs to build the CMake project inside the `eclair-gui` folder. The `CMakeLists.txt` is set up to
 automatically discover the necessary Rust files, so the build instructions are simply:
 
 ```
@@ -24,3 +24,5 @@ make
 ```
 
 On Windows, you might want to add `-GNinja` to the `cmake` invocation and then build with `ninja` instead of `make`.
+
+On Linux you might have to install additional packages to compile the front-end. Refer to your distribution docs for details.
