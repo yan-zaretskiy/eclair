@@ -330,8 +330,7 @@ Vec2 Application::get_window_pos() const {
 }
 
 void Application::set_window_size(int width, int height) {
-    float dpi_scale = get_dpi_scale();
-    glfwSetWindowSize(m_window, width * dpi_scale, height * dpi_scale);
+    glfwSetWindowSize(m_window, width, height);
 }
 
 Vec2 Application::get_window_size() const {
@@ -394,7 +393,7 @@ float Application::get_pixel_ratio() const {
     return get_framebuffer_size().x / get_window_size().x;
 }
 
-float Application::get_dpi_scale() const {    
+float Application::get_dpi_scale() {
     auto monitor = glfwGetPrimaryMonitor();
     float xscale = 1, yscale = 1;
     glfwGetMonitorContentScale(monitor, &xscale, &yscale);

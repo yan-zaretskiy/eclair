@@ -29,17 +29,6 @@ mod ffi {
         wg_name: String,
     }
 
-    pub(crate) struct TimeSeries {
-        // This is terrible. Can't wait for cxx to support slices.
-        pub(crate) values: Vec<f64>,
-        // In principle, units may differ between summary files for a given item.
-        pub(crate) unit: String,
-    }
-
-    pub(crate) struct TimeStamps {
-        pub(crate) values: Vec<f64>,
-    }
-
     extern "Rust" {
         type SummaryManager;
 
@@ -61,21 +50,69 @@ mod ffi {
         fn refresh(&mut self) -> Result<bool>;
 
         fn length(&self) -> usize;
+
         fn summary_name(&self, index: usize) -> &str;
 
         fn all_item_ids(&self) -> Vec<ItemId>;
 
-        fn unix_time(&self) -> Vec<TimeStamps>;
-        fn time_item(&self, name: &str) -> Vec<TimeSeries>;
-        fn performance_item(&self, name: &str) -> Vec<TimeSeries>;
-        fn field_item(&self, name: &str) -> Vec<TimeSeries>;
-        fn aquifer_item(&self, name: &str, index: i32) -> Vec<TimeSeries>;
-        fn block_item(&self, name: &str, index: i32) -> Vec<TimeSeries>;
-        fn well_item(&self, name: &str, well_name: &str) -> Vec<TimeSeries>;
-        fn group_item(&self, name: &str, group_name: &str) -> Vec<TimeSeries>;
-        fn region_item(&self, name: &str, index: i32) -> Vec<TimeSeries>;
-        fn cross_region_item(&self, name: &str, index: i32) -> Vec<TimeSeries>;
-        fn completion_item(&self, name: &str, well_name: &str, index: i32) -> Vec<TimeSeries>;
+        // TODO: Units.
+        unsafe fn timestamps<'a>(&'a self, summary_idx: usize) -> &'a [i64];
+
+        unsafe fn time_item<'a>(&'a self, summary_idx: usize, name: &'_ str) -> &'a [f32];
+
+        unsafe fn performance_item<'a>(&'a self, summary_idx: usize, name: &'_ str) -> &'a [f32];
+
+        unsafe fn field_item<'a>(&'a self, summary_idx: usize, name: &'_ str) -> &'a [f32];
+
+        unsafe fn aquifer_item<'a>(
+            &'a self,
+            summary_idx: usize,
+            name: &'_ str,
+            index: i32,
+        ) -> &'a [f32];
+
+        unsafe fn block_item<'a>(
+            &'a self,
+            summary_idx: usize,
+            name: &'_ str,
+            index: i32,
+        ) -> &'a [f32];
+
+        unsafe fn well_item<'a>(
+            &'a self,
+            summary_idx: usize,
+            name: &'_ str,
+            well_name: &'_ str,
+        ) -> &'a [f32];
+
+        unsafe fn group_item<'a>(
+            &'a self,
+            summary_idx: usize,
+            name: &'_ str,
+            group_name: &'_ str,
+        ) -> &'a [f32];
+
+        unsafe fn region_item<'a>(
+            &'a self,
+            summary_idx: usize,
+            name: &'_ str,
+            index: i32,
+        ) -> &'a [f32];
+
+        unsafe fn cross_region_item<'a>(
+            &'a self,
+            summary_idx: usize,
+            name: &'_ str,
+            index: i32,
+        ) -> &'a [f32];
+
+        unsafe fn completion_item<'a>(
+            &'a self,
+            summary_idx: usize,
+            name: &'_ str,
+            well_name: &'_ str,
+            index: i32,
+        ) -> &'a [f32];
     }
 }
 
@@ -166,19 +203,11 @@ impl SummaryManager {
     }
 
     pub fn length(&self) -> usize {
-        self.0.summary_names().len()
+        self.0.length()
     }
 
     pub fn summary_name(&self, index: usize) -> &str {
-        self.0.summary_names().get(index).map_or("", |name| *name)
-    }
-
-    pub fn summary_names(&self) -> Vec<String> {
-        self.0
-            .summary_names()
-            .iter()
-            .map(|name| name.to_string())
-            .collect()
+        self.0.name(index)
     }
 
     pub fn all_item_ids(&self) -> Vec<ffi::ItemId> {
@@ -193,72 +222,86 @@ impl SummaryManager {
         ids
     }
 
-    fn item_to_ffi<'a>(item: Vec<Option<(&str, &[f32])>>) -> Vec<ffi::TimeSeries> {
-        item.iter()
-            .map(|data| {
-                let (unit, values) = if let Some(data) = data {
-                    (data.0.to_string(), data.1.to_vec())
-                } else {
-                    (String::new(), vec![])
-                };
-
-                ffi::TimeSeries {
-                    values: values.iter().map(|el| *el as f64).collect(),
-                    unit,
-                }
-            })
-            .collect()
+    pub fn timestamps(&self, summary_idx: usize) -> &[i64] {
+        self.0.timestamps(summary_idx)
     }
 
-    pub fn unix_time(&self) -> Vec<ffi::TimeStamps> {
+    pub fn time_item<'a>(&'a self, summary_idx: usize, name: &'_ str) -> &'a [f32] {
+        self.0.time_item(summary_idx, name).unwrap_or_default()
+    }
+
+    pub fn performance_item<'a>(&'a self, summary_idx: usize, name: &'_ str) -> &'a [f32] {
         self.0
-            .unix_time()
-            .into_iter()
-            .map(|values| ffi::TimeStamps {
-                values: values.iter().map(|el| *el as f64).collect(),
-            })
-            .collect()
+            .performance_item(summary_idx, name)
+            .unwrap_or_default()
     }
 
-    pub fn time_item(&self, name: &str) -> Vec<ffi::TimeSeries> {
-        SummaryManager::item_to_ffi(self.0.time_item(name))
+    pub fn field_item<'a>(&'a self, summary_idx: usize, name: &'_ str) -> &'a [f32] {
+        self.0.field_item(summary_idx, name).unwrap_or_default()
     }
 
-    pub fn performance_item(&self, name: &str) -> Vec<ffi::TimeSeries> {
-        SummaryManager::item_to_ffi(self.0.performance_item(name))
+    pub fn aquifer_item<'a>(&'a self, summary_idx: usize, name: &'_ str, index: i32) -> &'a [f32] {
+        self.0
+            .aquifer_item(summary_idx, name, index)
+            .unwrap_or_default()
     }
 
-    pub fn field_item(&self, name: &str) -> Vec<ffi::TimeSeries> {
-        SummaryManager::item_to_ffi(self.0.field_item(name))
+    pub fn block_item<'a>(&'a self, summary_idx: usize, name: &'_ str, index: i32) -> &'a [f32] {
+        self.0
+            .block_item(summary_idx, name, index)
+            .unwrap_or_default()
     }
 
-    pub fn aquifer_item(&self, name: &str, index: i32) -> Vec<ffi::TimeSeries> {
-        SummaryManager::item_to_ffi(self.0.aquifer_item(name, index))
+    pub fn well_item<'a>(
+        &'a self,
+        summary_idx: usize,
+        name: &'_ str,
+        well_name: &'_ str,
+    ) -> &[f32] {
+        self.0
+            .well_item(summary_idx, name, well_name)
+            .unwrap_or_default()
     }
 
-    pub fn block_item(&self, name: &str, index: i32) -> Vec<ffi::TimeSeries> {
-        SummaryManager::item_to_ffi(self.0.block_item(name, index))
+    pub fn group_item<'a>(
+        &'a self,
+        summary_idx: usize,
+        name: &'_ str,
+        group_name: &'_ str,
+    ) -> &'a [f32] {
+        self.0
+            .group_item(summary_idx, name, group_name)
+            .unwrap_or_default()
     }
 
-    pub fn well_item(&self, name: &str, well_name: &str) -> Vec<ffi::TimeSeries> {
-        SummaryManager::item_to_ffi(self.0.well_item(name, well_name))
+    pub fn region_item<'a>(&'a self, summary_idx: usize, name: &'_ str, index: i32) -> &'a [f32] {
+        self.0
+            .region_item(summary_idx, name, index)
+            .unwrap_or_default()
     }
 
-    pub fn group_item(&self, name: &str, group_name: &str) -> Vec<ffi::TimeSeries> {
-        SummaryManager::item_to_ffi(self.0.group_item(name, group_name))
-    }
-
-    pub fn region_item(&self, name: &str, index: i32) -> Vec<ffi::TimeSeries> {
-        SummaryManager::item_to_ffi(self.0.region_item(name, index))
-    }
-
-    pub fn cross_region_item(&self, name: &str, index: i32) -> Vec<ffi::TimeSeries> {
+    pub fn cross_region_item<'a>(
+        &'a self,
+        summary_idx: usize,
+        name: &'_ str,
+        index: i32,
+    ) -> &'a [f32] {
         let to = index / 32768 as i32 - 10;
         let from = index - 32768 * (to + 10);
-        SummaryManager::item_to_ffi(self.0.cross_region_item(name, from, to))
+        self.0
+            .cross_region_item(summary_idx, name, from, to)
+            .unwrap_or_default()
     }
 
-    pub fn completion_item(&self, name: &str, well_name: &str, index: i32) -> Vec<ffi::TimeSeries> {
-        SummaryManager::item_to_ffi(self.0.completion_item(name, well_name, index))
+    pub fn completion_item<'a>(
+        &'a self,
+        summary_idx: usize,
+        name: &'_ str,
+        well_name: &'_ str,
+        index: i32,
+    ) -> &'a [f32] {
+        self.0
+            .completion_item(summary_idx, name, well_name, index)
+            .unwrap_or_default()
     }
 }

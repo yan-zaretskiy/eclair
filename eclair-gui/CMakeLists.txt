@@ -11,7 +11,8 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/deps/mahi-gui")
 set(ECLAIR_SRC
     main.cpp
     EclairApp.cpp
-    utils.cpp
+    Chart.cpp
+    DataManager.cpp
     deps/ImGuiFileBrowser.cpp
 )
 

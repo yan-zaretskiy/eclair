@@ -37,6 +37,10 @@ impl SummaryManager {
         }
     }
 
+    pub fn name(&self, index: usize) -> &str {
+        self.summaries.get(index).map_or("", |s| s.name.as_str())
+    }
+
     fn add<R: InitializeSummary>(&mut self, name: &str, reader: R) -> Result<()> {
         let (data, mut updater) = reader.init()?;
 
@@ -80,6 +84,10 @@ impl SummaryManager {
             .expect("Error when waiting for the summary thread to join");
 
         Ok(())
+    }
+
+    pub fn length(&self) -> usize {
+        self.summaries.len()
     }
 
     /// Add a new file-based summary data source.
@@ -142,156 +150,167 @@ impl SummaryManager {
         ids
     }
 
-    pub fn summary_names(&self) -> Vec<&str> {
-        self.summaries.iter().map(|s| s.name.as_str()).collect()
-    }
-
-    /// Get optional unit and values for an item id from all summary sources.
-    fn get_items_for_id(&self, id: ItemId) -> Vec<Option<(&str, &[f32])>> {
-        self.summaries
-            .iter()
-            .map(|s| {
-                s.data.item_ids.get(&id).map(|index| {
-                    let item = &s.data.items[*index];
-                    (item.unit.as_str(), item.values.as_slice())
-                })
+    /// Get optional values for an item id from all summary sources.
+    fn get_items_for_id(&self, summary_idx: usize, id: ItemId) -> Option<&[f32]> {
+        self.summaries[summary_idx]
+            .data
+            .item_ids
+            .get(&id)
+            .map(|index| {
+                self.summaries[summary_idx].data.items[*index]
+                    .values
+                    .as_slice()
             })
-            .collect()
     }
 
-    pub fn unix_time(&self) -> Vec<Vec<i64>> {
-        // All summaries contain the "TIME" vector, unwrap is OK.
-        let times: Vec<&[f32]> = self
-            .get_items_for_id(ItemId {
-                name: FlexString::from_str("TIME"),
+    pub fn timestamps(&self, summary_idx: usize) -> &[i64] {
+        self.summaries[summary_idx].data.timestamps.as_slice()
+    }
+
+    pub fn time_item<'a>(&'a self, summary_idx: usize, name: &'_ str) -> Option<&[f32]> {
+        self.get_items_for_id(
+            summary_idx,
+            ItemId {
+                name: FlexString::from_str(name),
                 qualifier: ItemQualifier::Time,
-            })
-            .iter()
-            .map(|data| data.unwrap().1)
-            .collect();
-
-        let start_dates: Vec<&[i32; 6]> =
-            self.summaries.iter().map(|s| &s.data.start_date).collect();
-
-        times
-            .into_iter()
-            .zip(start_dates)
-            .map(|(time, start_date)| {
-                let d =
-                    NaiveDate::from_ymd(start_date[2], start_date[1] as u32, start_date[0] as u32);
-                let t = NaiveTime::from_hms_milli(
-                    start_date[3] as u32,
-                    start_date[4] as u32,
-                    (start_date[5] / 1_000_000) as u32,
-                    (start_date[5] % 1_000_000) as u32,
-                );
-                let dt = NaiveDateTime::new(d, t);
-
-                time.iter()
-                    .map(|days| {
-                        let next_dt = dt + Duration::seconds((days * 86400.0) as i64);
-                        next_dt.timestamp()
-                    })
-                    .collect()
-            })
-            .collect()
+            },
+        )
     }
 
-    pub fn time_item<'a>(&'a self, name: &'_ str) -> Vec<Option<(&str, &[f32])>> {
-        self.get_items_for_id(ItemId {
-            name: FlexString::from_str(name),
-            qualifier: ItemQualifier::Time,
-        })
+    pub fn performance_item<'a>(&'a self, summary_idx: usize, name: &'_ str) -> Option<&[f32]> {
+        self.get_items_for_id(
+            summary_idx,
+            ItemId {
+                name: FlexString::from_str(name),
+                qualifier: ItemQualifier::Performance,
+            },
+        )
     }
 
-    pub fn performance_item<'a>(&'a self, name: &'_ str) -> Vec<Option<(&str, &[f32])>> {
-        self.get_items_for_id(ItemId {
-            name: FlexString::from_str(name),
-            qualifier: ItemQualifier::Performance,
-        })
+    pub fn field_item<'a>(&'a self, summary_idx: usize, name: &'_ str) -> Option<&[f32]> {
+        self.get_items_for_id(
+            summary_idx,
+            ItemId {
+                name: FlexString::from_str(name),
+                qualifier: ItemQualifier::Field,
+            },
+        )
     }
 
-    pub fn field_item<'a>(&'a self, name: &'_ str) -> Vec<Option<(&str, &[f32])>> {
-        self.get_items_for_id(ItemId {
-            name: FlexString::from_str(name),
-            qualifier: ItemQualifier::Field,
-        })
+    pub fn aquifer_item<'a>(
+        &'a self,
+        summary_idx: usize,
+        name: &'_ str,
+        index: i32,
+    ) -> Option<&[f32]> {
+        self.get_items_for_id(
+            summary_idx,
+            ItemId {
+                name: FlexString::from_str(name),
+                qualifier: ItemQualifier::Aquifer { index },
+            },
+        )
     }
 
-    pub fn aquifer_item<'a>(&'a self, name: &'_ str, index: i32) -> Vec<Option<(&str, &[f32])>> {
-        self.get_items_for_id(ItemId {
-            name: FlexString::from_str(name),
-            qualifier: ItemQualifier::Aquifer { index },
-        })
-    }
-
-    pub fn block_item<'a>(&'a self, name: &'_ str, index: i32) -> Vec<Option<(&str, &[f32])>> {
-        self.get_items_for_id(ItemId {
-            name: FlexString::from_str(name),
-            qualifier: ItemQualifier::Block { index },
-        })
+    pub fn block_item<'a>(
+        &'a self,
+        summary_idx: usize,
+        name: &'_ str,
+        index: i32,
+    ) -> Option<&[f32]> {
+        self.get_items_for_id(
+            summary_idx,
+            ItemId {
+                name: FlexString::from_str(name),
+                qualifier: ItemQualifier::Block { index },
+            },
+        )
     }
 
     pub fn well_item<'a>(
         &'a self,
+        summary_idx: usize,
         name: &'_ str,
         well_name: &'_ str,
-    ) -> Vec<Option<(&str, &[f32])>> {
-        self.get_items_for_id(ItemId {
-            name: FlexString::from_str(name),
-            qualifier: ItemQualifier::Well {
-                wg_name: FlexString::from_str(well_name),
+    ) -> Option<&[f32]> {
+        self.get_items_for_id(
+            summary_idx,
+            ItemId {
+                name: FlexString::from_str(name),
+                qualifier: ItemQualifier::Well {
+                    wg_name: FlexString::from_str(well_name),
+                },
             },
-        })
+        )
     }
 
     pub fn group_item<'a>(
         &'a self,
+        summary_idx: usize,
         name: &'_ str,
         group_name: &'_ str,
-    ) -> Vec<Option<(&str, &[f32])>> {
-        self.get_items_for_id(ItemId {
-            name: FlexString::from_str(name),
-            qualifier: ItemQualifier::Group {
-                wg_name: FlexString::from_str(group_name),
+    ) -> Option<&[f32]> {
+        self.get_items_for_id(
+            summary_idx,
+            ItemId {
+                name: FlexString::from_str(name),
+                qualifier: ItemQualifier::Group {
+                    wg_name: FlexString::from_str(group_name),
+                },
             },
-        })
+        )
     }
 
-    pub fn region_item<'a>(&'a self, name: &'_ str, index: i32) -> Vec<Option<(&str, &[f32])>> {
-        self.get_items_for_id(ItemId {
-            name: FlexString::from_str(name),
-            qualifier: ItemQualifier::Region {
-                wg_name: None,
-                index,
+    pub fn region_item<'a>(
+        &'a self,
+        summary_idx: usize,
+        name: &'_ str,
+        index: i32,
+    ) -> Option<&[f32]> {
+        self.get_items_for_id(
+            summary_idx,
+            ItemId {
+                name: FlexString::from_str(name),
+                qualifier: ItemQualifier::Region {
+                    wg_name: None,
+                    index,
+                },
             },
-        })
+        )
     }
 
     pub fn cross_region_item<'a>(
         &'a self,
+        summary_idx: usize,
         name: &'_ str,
         from: i32,
         to: i32,
-    ) -> Vec<Option<(&str, &[f32])>> {
-        self.get_items_for_id(ItemId {
-            name: FlexString::from_str(name),
-            qualifier: ItemQualifier::CrossRegionFlow { from, to },
-        })
+    ) -> Option<&[f32]> {
+        self.get_items_for_id(
+            summary_idx,
+            ItemId {
+                name: FlexString::from_str(name),
+                qualifier: ItemQualifier::CrossRegionFlow { from, to },
+            },
+        )
     }
 
     pub fn completion_item<'a>(
         &'a self,
+        summary_idx: usize,
         name: &'_ str,
         well_name: &'_ str,
         index: i32,
-    ) -> Vec<Option<(&str, &[f32])>> {
-        self.get_items_for_id(ItemId {
-            name: FlexString::from_str(name),
-            qualifier: ItemQualifier::Completion {
-                wg_name: FlexString::from_str(well_name),
-                index,
+    ) -> Option<&[f32]> {
+        self.get_items_for_id(
+            summary_idx,
+            ItemId {
+                name: FlexString::from_str(name),
+                qualifier: ItemQualifier::Completion {
+                    wg_name: FlexString::from_str(well_name),
+                    index,
+                },
             },
-        })
+        )
     }
 }

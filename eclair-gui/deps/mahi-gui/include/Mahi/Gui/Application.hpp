@@ -120,7 +120,7 @@ public:
     /// Get pixel ratio (FB width / window width) for high DPI screens
     float get_pixel_ratio() const;
     /// Get the DPI scaling factor if enabled
-    float get_dpi_scale() const;
+    static float get_dpi_scale() ;
     /// Enable/disable VSync
     void set_vsync(bool enabled);
     /// Sets a target framelimit in hertz and disables VSync (pass 0 for no limit)

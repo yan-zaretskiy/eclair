@@ -42,9 +42,10 @@ use std::{
     fs::File,
     io::{BufReader, Seek, SeekFrom},
     thread::sleep,
-    time::Duration,
+    time,
 };
 
+use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
 use crossbeam_channel::{Receiver, Sender};
 use itertools::multizip;
 use once_cell::sync::Lazy;
@@ -257,14 +258,19 @@ pub struct Summary {
     /// Grid dimensions of a simulation
     pub dims: [i32; 3],
 
-    /// Simulation start date
-    pub start_date: [i32; 6],
+    /// Simulation unix timestamps
+    pub timestamps: Vec<i64>,
 
     /// ItemId to its index in the items vector
     pub item_ids: HashMap<ItemId, usize>,
 
     /// Simulation data
     pub items: Vec<SummaryItem>,
+
+    // Index of the time item.
+    time_index: usize,
+
+    start_timestamp: i64,
 }
 
 impl Summary {
@@ -281,8 +287,13 @@ impl Summary {
         }
     }
 
-    /// This function expect the size of params to equal the size of items.
+    /// This function expects the size of params to equal the size of items.
     pub fn append(&mut self, params: Vec<f32>) {
+        let new_time = params[self.time_index];
+        let new_ts =
+            self.start_timestamp + Duration::seconds((new_time * 86400.0) as i64).num_seconds();
+        self.timestamps.push(new_ts);
+
         for (item, param) in self.items.iter_mut().zip(params) {
             item.values.push(param);
         }
@@ -386,12 +397,17 @@ impl TryFrom<SmspecRecords> for Summary {
         // Now we prepare to construct the Summary object.
         let dims = dimens[1..4].try_into().unwrap();
 
-        let start_date = if start_dat.len() == 3 {
-            let mut v = [0, 0, 0, 0, 0, 0];
-            v[..3].copy_from_slice(&start_dat);
-            v
+        let d = NaiveDate::from_ymd(start_dat[2], start_dat[1] as u32, start_dat[0] as u32);
+
+        let ts = if start_dat.len() == 3 {
+            d.and_hms(0, 0, 0)
         } else {
-            start_dat.as_slice().try_into().unwrap()
+            d.and_hms_milli(
+                start_dat[3] as u32,
+                start_dat[4] as u32,
+                (start_dat[5] / 1_000_000) as u32,
+                (start_dat[5] % 1_000_000) as u32,
+            )
         };
 
         let mut item_ids = HashMap::new();
@@ -407,11 +423,21 @@ impl TryFrom<SmspecRecords> for Summary {
             });
         }
 
+        // We will panic if there is no "TIME" in the data. Make this an error instead.
+        let time_index = *item_ids
+            .get(&ItemId {
+                name: FlexString::from_str("TIME"),
+                qualifier: ItemQualifier::Time,
+            })
+            .unwrap();
+
         Ok(Summary {
             dims,
-            start_date,
+            timestamps: vec![],
             item_ids,
             items,
+            time_index,
+            start_timestamp: ts.timestamp(),
         })
     }
 }
@@ -552,7 +578,7 @@ impl UpdateSummary for SummaryFileUpdater {
                     }
                 };
             }
-            sleep(Duration::from_millis(100));
+            sleep(time::Duration::from_millis(100));
         }
     }
 }
