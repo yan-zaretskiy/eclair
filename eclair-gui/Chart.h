@@ -15,7 +15,6 @@ class Chart {
 public:
   explicit Chart(DataManager &data_manager) : data_manager(data_manager) {
     reset();
-    print_rows();
   }
 
   // Draw the chart to the ImGui window.

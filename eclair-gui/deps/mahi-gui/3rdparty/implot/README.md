@@ -42,7 +42,7 @@ ImPlot is an immediate mode, GPU accelerated plotting library for [Dear ImGui](h
 - default styling based on current ImGui theme, but most elements can be customized independently
 - customizable data getters and data striding (just like ImGui:PlotLine)
 - accepts data as float, double, and 8, 16, 32, and 64-bit signed/unsigned integral types
-- and more! (see [Announcements](https://github.com/epezent/implot/issues/48))
+- and more! (see Announcements [2020](https://github.com/epezent/implot/issues/48)/[2021](https://github.com/epezent/implot/issues/164))
 
 ## Usage
 
@@ -116,6 +116,11 @@ A: The API is thoroughly commented in `implot.h`, and the demo in `implot_demo.c
 
 A: Yes, within reason. You can plot tens to hundreds of thousands of points without issue, but don't expect millions to be a buttery smooth experience. That said, you can always downsample extremely large datasets by telling ImPlot to stride your data at larger intervals if needed.
 
+**Q: What data types can I plot?**
+
+A: ImPlot plotting functions accept most scalar types:
+`float`, `double`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64`. Arrays of custom structs or classes (e.g. `Vector2f` or similar) are easily passed to ImPlot functions using the built in striding features (see `implot.h` for documentation).
+
 **Q: Can plot styles be modified?**
 
 A: Yes. Data colormaps and various styling colors and variables can be pushed/popped or modified permanently on startup. Three default styles are available, as well as an automatic style that attempts to match you ImGui style.
@@ -130,7 +135,7 @@ A: Yes. Up to three y-axes can be enabled. Multiple x-axes are not supported.
 
 **Q: Does ImPlot support [insert plot type]?**
 
-A: Maybe. Check the demo, gallery, or [Announcements](https://github.com/epezent/implot/issues/48) to see if your desired plot type is shown. If not, consider submitting an issue or better yet, a PR!
+A: Maybe. Check the demo, gallery, or Announcements ([2020](https://github.com/epezent/implot/issues/48)/[2021](https://github.com/epezent/implot/issues/164))to see if your desired plot type is shown. If not, consider submitting an issue or better yet, a PR!
 
 **Q: Does ImPlot support 3D plots?**
 
@@ -147,11 +152,6 @@ A: Not exactly, but it does give you the ability to query plot sub-ranges, with 
 **Q: Can plots be exported/saved to image?**
 
 A: Not currently. Use your OS's screen capturing mechanisms if you need to capture a plot. ImPlot is not suitable for rendering publication quality plots; it is only intended to be used as a visualization tool. Post-process your data with MATLAB or matplotlib for these purposes.
-
-**Q: What data types can I plot?**
-
-A: ImPlot plotting functions accept most scalar types:
-`float`, `double`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64`. Arrays of custom structs or classes (e.g. `Vector2f` or similar) are easily passed to ImPlot functions using the built in striding features (see `implot.h` for documentation).
 
 **Q: Can ImPlot be used with other languages/bindings?**
 

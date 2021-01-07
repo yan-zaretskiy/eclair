@@ -167,13 +167,17 @@ void Chart::draw() {
   //  ImGui::Checkbox("Show Tooltip", &tooltip);
   const char *x_label = empty ? nullptr : "Date";
   // This is not correct.
-  const char *y_label = empty ? nullptr : y_labels[0].c_str();
+  const char *y_label =
+      empty || y_labels[0].empty() ? nullptr : y_labels[0].c_str();
+  const char *y2_label =
+      empty || y_labels[1].empty() ? nullptr : y_labels[1].c_str();
 
   if (ImPlot::BeginPlot(
           "##DND", x_label, y_label,
           ImVec2(ImGui::GetWindowWidth(),
                  ImGui::GetWindowHeight() - ImGui::GetCursorPosY()),
-          ImPlotFlags_NoMousePos | ImPlotFlags_YAxis2, ImPlotAxisFlags_Time)) {
+          ImPlotFlags_NoMousePos | ImPlotFlags_YAxis2, ImPlotAxisFlags_Time,
+          ImPlotFlags_None, ImPlotFlags_None, ImPlotFlags_None, y2_label)) {
     if (!empty) {
       bool deleted_smth = false;
       int counter = 0;
