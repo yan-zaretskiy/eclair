@@ -7,7 +7,6 @@
 #include <Mahi/Util.hpp>
 #include <implot_internal.h>
 
-#include <chrono>
 #include <string>
 
 using namespace mahi::gui;
@@ -16,7 +15,7 @@ using namespace mahi::util;
 namespace eclair {
 
 void Chart::reset() {
-  for (auto &axis : items_ids) {
+  for (auto &axis : item_ids) {
     axis.fill(-1);
   }
   y_labels.fill("");
@@ -24,7 +23,7 @@ void Chart::reset() {
 }
 
 bool Chart::is_empty() {
-  for (auto &axis : items_ids) {
+  for (auto &axis : item_ids) {
     for (auto &id : axis) {
       if (id != -1) {
         return false;
@@ -35,13 +34,17 @@ bool Chart::is_empty() {
 }
 
 bool Chart::add_item_to_axis(int item_index, int axis, bool append) {
-  auto &axis_items = items_ids[axis];
-  if (append && axis_items[0] != -1) {
+  auto &axis_items = item_ids[axis];
+  auto non_empty_it =
+      std::find_if_not(std::begin(axis_items), std::end(axis_items),
+                       [](auto &el) { return el == -1; });
+  if (append && non_empty_it != std::end(axis_items)) {
     auto empty_it = std::find(std::begin(axis_items), std::end(axis_items), -1);
     if (empty_it != std::end(axis_items) &&
-        data_manager.names_equal(item_index, axis_items[0])) {
+        data_manager.names_equal(item_index, *non_empty_it)) {
       *empty_it = item_index;
-      // If we could successfully append an item, we need to change the y-label.
+      // If we could successfully append an item, we need tos change the
+      // y-label.
       y_labels[axis] = data_manager.item_name(item_index);
       needs_refit = true;
       return true;
@@ -55,6 +58,26 @@ bool Chart::add_item_to_axis(int item_index, int axis, bool append) {
     y_labels[axis] = data_manager.item_name_and_location(item_index);
     needs_refit = true;
     return true;
+  }
+}
+
+void Chart::refresh_axes_labels_and_limits() {
+  int empty_count = 0;
+  for (int i = 0; i < N_AXES; ++i) {
+    auto &axis = item_ids[i];
+    auto n_empty_items = std::count(std::begin(axis), std::end(axis), -1);
+    if (n_empty_items == N_ITEMS) {
+      y_labels[i] = "";
+      ImPlot::SetNextPlotLimitsY(0, 1, ImGuiCond_Always, i);
+      empty_count++;
+    } else if (n_empty_items == N_ITEMS - 1) {
+      auto it = std::find_if_not(std::begin(axis), std::end(axis),
+                                 [](auto &el) { return el == -1; });
+      y_labels[i] = data_manager.item_name_and_location(*it);
+    }
+  }
+  if (empty_count == N_AXES) {
+    ImPlot::SetNextPlotLimitsX(0, 1, ImGuiCond_Always);
   }
 }
 
@@ -134,43 +157,29 @@ ImPlotPoint ToPoint(void *data, int idx) {
   return {static_cast<double>(pd->x[idx]), pd->y[idx]};
 }
 
-bool schedule_deletion(int &id) {
-  static bool first_time = true;
-  static auto last_deletion = std::chrono::steady_clock::now();
-  auto now = std::chrono::steady_clock::now();
-  std::chrono::duration<double> diff = now - last_deletion;
-  if (!first_time && diff.count() < 0.1) {
-    return false;
-  } else {
-    last_deletion = now;
-    first_time = false;
-    id = -1;
-    return true;
-  }
-}
-
 void Chart::draw() {
   if (!is_empty() && data_manager.empty()) {
     reset();
   }
 
-  bool empty = is_empty();
-  if (empty) {
-    ImPlot::SetNextPlotLimitsX(0, 1, ImGuiCond_Always);
-    ImPlot::SetNextPlotLimitsY(0, 1, ImGuiCond_Always, 0);
-    ImPlot::SetNextPlotLimitsY(0, 1, ImGuiCond_Always, 1);
-  }
-
+  refresh_axes_labels_and_limits();
   if (needs_refit) {
     ImPlot::FitNextPlotAxes(true, true, true, false);
   }
   //  ImGui::Checkbox("Show Tooltip", &tooltip);
+  bool empty = is_empty();
   const char *x_label = empty ? nullptr : "Date";
   // This is not correct.
   const char *y_label =
       empty || y_labels[0].empty() ? nullptr : y_labels[0].c_str();
   const char *y2_label =
       empty || y_labels[1].empty() ? nullptr : y_labels[1].c_str();
+
+  // Detect that "d" has been released before we allow another
+  // item to be deleted.
+  if (!ImGui::GetIO().KeysDown[GLFW_KEY_D] && !was_d_released) {
+    was_d_released = true;
+  }
 
   if (ImPlot::BeginPlot(
           "##DND", x_label, y_label,
@@ -182,7 +191,7 @@ void Chart::draw() {
       bool deleted_smth = false;
       int counter = 0;
       for (int i = 0; i < N_AXES; ++i) {
-        auto &axis = items_ids[i];
+        auto &axis = item_ids[i];
         for (auto &id : axis) {
           if (id != -1) {
             for (int s = 0; s < data_manager.size(); ++s) {
@@ -195,10 +204,10 @@ void Chart::draw() {
               ImPlot::PlotLineG(name.c_str(), ToPoint, &pd, pd.x.size());
               ImPlot::PopStyleColor();
               if (ImPlot::IsLegendEntryHovered(name.c_str()) &&
-                  ImGui::GetIO().KeysDown[GLFW_KEY_D]) {
-                // I need to put some time pressure on the deletion, because
-                // frame rendering is way faster than a key press.
-                deleted_smth = schedule_deletion(id);
+                  ImGui::GetIO().KeysDown[GLFW_KEY_D] && was_d_released) {
+                was_d_released = false;
+                id = -1;
+                deleted_smth = true;
               }
             }
           }

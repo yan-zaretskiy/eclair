@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.17)
-project(eclair_gui VERSION 0.1.1)
+project(eclair_gui VERSION 0.2)
 
 set(CMAKE_CXX_STANDARD 17)
 

@@ -1,6 +1,7 @@
 #ifndef ECLAIR_GUI_DATAMANAGER_H
 #define ECLAIR_GUI_DATAMANAGER_H
 
+#include <cassert>
 #include "eclair_ffi.rs.h"
 #include <imgui.h>
 
