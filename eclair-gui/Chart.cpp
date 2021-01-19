@@ -193,16 +193,18 @@ void Chart::draw() {
       for (int i = 0; i < N_AXES; ++i) {
         auto &axis = item_ids[i];
         for (auto &id : axis) {
-          if (id != -1) {
-            for (int s = 0; s < data_manager.size(); ++s) {
+          for (int s = 0; s < data_manager.size(); ++s) {
+            if (id != -1) {
               const auto &name = data_manager.item_full_name(s, id);
               auto pd = data_manager.plot_data(s, id);
-              ImPlot::SetPlotYAxis(i);
-              auto col = ImPlot::GetColormapColor(counter);
-              counter += 1;
-              ImPlot::PushStyleColor(ImPlotCol_Line, col);
-              ImPlot::PlotLineG(name.c_str(), ToPoint, &pd, pd.x.size());
-              ImPlot::PopStyleColor();
+              if (!pd.y.empty()) {
+                ImPlot::SetPlotYAxis(i);
+                auto col = ImPlot::GetColormapColor(counter);
+                counter += 1;
+                ImPlot::PushStyleColor(ImPlotCol_Line, col);
+                ImPlot::PlotLineG(name.c_str(), ToPoint, &pd, pd.x.size());
+                ImPlot::PopStyleColor();
+              }
               if (ImPlot::IsLegendEntryHovered(name.c_str()) &&
                   ImGui::GetIO().KeysDown[GLFW_KEY_D] && was_d_released) {
                 was_d_released = false;
